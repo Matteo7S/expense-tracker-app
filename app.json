@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "expense-tracker-mobile",
+    "name": "Expense Tracker",
     "slug": "expense-tracker-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,15 +8,33 @@
     "scheme": "expensetrackermobile",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Questa app usa la fotocamera per scansionare gli scontrini e gestire le note spese.",
+        "NSPhotoLibraryUsageDescription": "Questa app necessita dell'accesso alla libreria foto per salvare e caricare le ricevute."
+      },
+      "bundleIdentifier": "it.welfy.expensetracker"
     },
     "android": {
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_MEDIA_IMAGES"
+      ],
+      "package": "it.welfy.expensetracker"
     },
     "web": {
       "bundler": "metro",
@@ -24,7 +42,6 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
-      "expo-router",
       [
         "expo-splash-screen",
         {
@@ -33,10 +50,23 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
-      ]
+      ],
+      "expo-camera",
+      "./plugins/vision-ocr",
+      "expo-router",
+      "expo-secure-store",
+      "expo-font",
+      "expo-sqlite",
+      "expo-web-browser"
     ],
-    "experiments": {
-      "typedRoutes": true
+    "permissions": [
+      "CAMERA",
+      "RECORD_AUDIO"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "2669d12c-2a32-4b6d-af47-1e7b4bec4c93"
+      }
     }
   }
 }

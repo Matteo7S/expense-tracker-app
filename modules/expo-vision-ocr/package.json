@@ -1,0 +1,14 @@
+{
+  "name": "expo-vision-ocr",
+  "version": "1.0.0",
+  "description": "Apple Vision OCR native module for Expo",
+  "main": "index.ts",
+  "scripts": {},
+  "keywords": ["expo", "vision", "ocr", "ios"],
+  "author": "",
+  "license": "MIT",
+  "homepage": "",
+  "peerDependencies": {
+    "expo": "*"
+  }
+}

@@ -32,8 +32,40 @@ yarn-error.*
 
 # local env files
 .env*.local
+.env
 
 # typescript
 *.tsbuildinfo
+
+# iOS
+ios/Pods/
+ios/build/
+ios/*.xcworkspace/xcuserdata
+ios/*.xcodeproj/xcuserdata
+ios/*.xcodeproj/project.xcworkspace/xcuserdata
+
+# Android
+android/build/
+android/app/build/
+android/.gradle/
+
+# Database
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Logs
+logs/
+*.log
+
+# Backup files
+*.backup
+*.bak
+*.orig
+
+# Scripts
+rebuild-with-logs.sh
+test-connectivity.js
 
 app-example
