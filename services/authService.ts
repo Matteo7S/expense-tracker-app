@@ -15,7 +15,8 @@ interface LoginResponse {
 interface RegisterRequest {
   email: string;
   password: string;
-  name: string;
+  firstName: string;
+  lastName: string;
 }
 
 interface ChangePasswordRequest {
@@ -39,10 +40,16 @@ class AuthService {
   }
 
   async register(email: string, password: string, name: string): Promise<User> {
+    // Split name into firstName and lastName
+    const nameParts = name.trim().split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || firstName;
+    
     const response = await apiClient.authPost<ApiResponse<LoginResponse>>('/auth/register', {
       email,
       password,
-      name,
+      firstName,
+      lastName,
     });
 
     if (response.success && response.data) {
