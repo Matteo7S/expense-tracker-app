@@ -535,6 +535,38 @@ export function ExpenseReportDetailScreen() {
   // Calcola il totale delle spese filtrate
   const filteredTotal = expenses.reduce((sum, expense) => sum + expense.amount, 0);
 
+  // Calcola i totali per mese corrente e precedente
+  const getCurrentMonthTotal = () => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    
+    return allExpenses
+      .filter(expense => {
+        const expenseDate = expense.date ? new Date(expense.date) : new Date(expense.createdAt);
+        return expenseDate >= firstDay && expenseDate <= lastDay;
+      })
+      .reduce((sum, expense) => sum + expense.amount, 0);
+  };
+
+  const getPreviousMonthTotal = () => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+    
+    return allExpenses
+      .filter(expense => {
+        const expenseDate = expense.date ? new Date(expense.date) : new Date(expense.createdAt);
+        return expenseDate >= firstDay && expenseDate <= lastDay;
+      })
+      .reduce((sum, expense) => sum + expense.amount, 0);
+  };
+
+  const currentMonthTotal = getCurrentMonthTotal();
+  const previousMonthTotal = getPreviousMonthTotal();
+  const currentMonthName = getMonthName(0).charAt(0).toUpperCase() + getMonthName(0).slice(1);
+  const previousMonthName = getMonthName(-1).charAt(0).toUpperCase() + getMonthName(-1).slice(1);
+
   const renderExpenseItem = ({ item }: { item: Expense }) => (
     <SwipeableExpenseItem
       expense={item}
@@ -566,6 +598,12 @@ export function ExpenseReportDetailScreen() {
             <Text style={styles.reportDates}>
               {new Date(report.startDate).toLocaleDateString('it-IT')} -{' '}
               {new Date(report.endDate).toLocaleDateString('it-IT')}
+            </Text>
+            <Text style={styles.monthTotal}>
+              Totale {currentMonthName}: €{currentMonthTotal.toFixed(2)}
+            </Text>
+            <Text style={styles.monthTotal}>
+              Totale {previousMonthName}: €{previousMonthTotal.toFixed(2)}
             </Text>
             <Text style={styles.reportTotal}>
               Totale: €{filteredTotal.toFixed(2)}
@@ -1014,6 +1052,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#007AFF',
+  },
+  monthTotal: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 4,
   },
   editButton: {
     padding: 8,
