@@ -595,10 +595,12 @@ export function ExpenseReportDetailScreen() {
             {report.description && (
               <Text style={styles.reportDescription}>{report.description}</Text>
             )}
-            <Text style={styles.reportDates}>
-              {new Date(report.startDate).toLocaleDateString('it-IT')} -{' '}
-              {new Date(report.endDate).toLocaleDateString('it-IT')}
-            </Text>
+            {!report.isGeneric && (
+              <Text style={styles.reportDates}>
+                {new Date(report.startDate).toLocaleDateString('it-IT')} -{' '}
+                {new Date(report.endDate).toLocaleDateString('it-IT')}
+              </Text>
+            )}
             <Text style={styles.monthTotal}>
               Totale {currentMonthName}: €{currentMonthTotal.toFixed(2)}
             </Text>

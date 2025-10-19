@@ -24,6 +24,6 @@ const AUTH_BASE_URL = getAuthApiUrl();
 const MAIN_BASE_URL = getMainApiUrl();
 
 export const API_ENDPOINTS = {
-  MAIN_API: `${MAIN_BASE_URL}api`,
-  AUTH_API: `${AUTH_BASE_URL}api`,
+  MAIN_API: MAIN_BASE_URL,
+  AUTH_API: AUTH_BASE_URL,
 };

@@ -180,51 +180,55 @@ export function CreateExpenseReportScreen() {
             />
           </View>
 
-          {/* Data Inizio */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Data Inizio *</Text>
-            <TouchableOpacity
-              style={styles.dateButton}
-              onPress={() => setShowStartDatePicker(true)}
-            >
-              <Text style={styles.dateButtonText}>
-                {formData.startDate.toLocaleDateString('it-IT')}
-              </Text>
-              <MaterialIcons name="calendar-today" size={20} color="#666" />
-            </TouchableOpacity>
-            {showStartDatePicker && (
-              <DateTimePicker
-                value={formData.startDate}
-                mode="date"
-                display="default"
-                onChange={onStartDateChange}
-              />
-            )}
-          </View>
+          {/* Data Inizio - hide for generic report */}
+          {!reportToEdit?.isGeneric && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Data Inizio *</Text>
+              <TouchableOpacity
+                style={styles.dateButton}
+                onPress={() => setShowStartDatePicker(true)}
+              >
+                <Text style={styles.dateButtonText}>
+                  {formData.startDate.toLocaleDateString('it-IT')}
+                </Text>
+                <MaterialIcons name="calendar-today" size={20} color="#666" />
+              </TouchableOpacity>
+              {showStartDatePicker && (
+                <DateTimePicker
+                  value={formData.startDate}
+                  mode="date"
+                  display="default"
+                  onChange={onStartDateChange}
+                />
+              )}
+            </View>
+          )}
 
-          {/* Data Fine */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Data Fine</Text>
-            <TouchableOpacity
-              style={[styles.dateButton, errors.endDate && styles.inputError]}
-              onPress={() => setShowEndDatePicker(true)}
-            >
-              <Text style={styles.dateButtonText}>
-                {formData.endDate.toLocaleDateString('it-IT')}
-              </Text>
-              <MaterialIcons name="calendar-today" size={20} color="#666" />
-            </TouchableOpacity>
-            {showEndDatePicker && (
-              <DateTimePicker
-                value={formData.endDate}
-                mode="date"
-                display="default"
-                onChange={onEndDateChange}
-                minimumDate={formData.startDate}
-              />
-            )}
-            {errors.endDate && <Text style={styles.errorText}>{errors.endDate}</Text>}
-          </View>
+          {/* Data Fine - hide for generic report */}
+          {!reportToEdit?.isGeneric && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Data Fine</Text>
+              <TouchableOpacity
+                style={[styles.dateButton, errors.endDate && styles.inputError]}
+                onPress={() => setShowEndDatePicker(true)}
+              >
+                <Text style={styles.dateButtonText}>
+                  {formData.endDate.toLocaleDateString('it-IT')}
+                </Text>
+                <MaterialIcons name="calendar-today" size={20} color="#666" />
+              </TouchableOpacity>
+              {showEndDatePicker && (
+                <DateTimePicker
+                  value={formData.endDate}
+                  mode="date"
+                  display="default"
+                  onChange={onEndDateChange}
+                  minimumDate={formData.startDate}
+                />
+              )}
+              {errors.endDate && <Text style={styles.errorText}>{errors.endDate}</Text>}
+            </View>
+          )}
 
           {/* Buttons */}
           <View style={styles.buttonContainer}>
