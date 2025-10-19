@@ -211,7 +211,7 @@ export function GenericLiveOCRScreen() {
           useNativeDriver: false,
         }).start();
 
-        console.log(`✅ Vision OCR Analysis completed: ${accuracy.toFixed(1)}% accuracy`);
+        console.log(`✅ Vision AI Analysis completed: ${accuracy.toFixed(1)}% accuracy`);
       } else {
         // Fallback to AI OCR (upload and let backend process)
         setAnalysisProgress({ progress: 20, stage: 'Caricamento per AI OCR...' });
@@ -252,7 +252,7 @@ export function GenericLiveOCRScreen() {
       }
 
     } catch (error) {
-      console.error('❌ OCR Analysis error:', error);
+      console.error('❌ AI Analysis error:', error);
       setOcrAnalysis({
         text: '',
         confidence: 0,
@@ -602,7 +602,7 @@ export function GenericLiveOCRScreen() {
         
         {/* Analysis Header */}
         <View style={styles.analysisHeader}>
-          <Text style={styles.analysisTitle}>Analisi OCR</Text>
+          <Text style={styles.analysisTitle}>Analisi AI</Text>
           <Text style={styles.analysisSubtitle}>{analysisProgress.stage}</Text>
         </View>
 
