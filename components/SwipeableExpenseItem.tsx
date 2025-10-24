@@ -212,7 +212,7 @@ export function SwipeableExpenseItem({
                 </Text>
               )}
               <Text style={styles.expenseDate}>
-                {new Date(expense.createdAt).toLocaleDateString('it-IT')}
+                {expense.date ? new Date(expense.date).toLocaleDateString('it-IT') : new Date(expense.createdAt).toLocaleDateString('it-IT')}
               </Text>
             </View>
             
