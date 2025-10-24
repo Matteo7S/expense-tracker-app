@@ -100,7 +100,7 @@ function ExpenseItem({ expense, onPress, onDelete }: ExpenseItemProps) {
             </Text>
           )}
           <Text style={styles.expenseDate}>
-            {new Date(expense.createdAt).toLocaleDateString('it-IT')}
+            {expense.date ? new Date(expense.date).toLocaleDateString('it-IT') : new Date(expense.createdAt).toLocaleDateString('it-IT')}
           </Text>
         </View>
         <Text style={styles.expenseAmount}>€{expense.amount.toFixed(2)}</Text>
