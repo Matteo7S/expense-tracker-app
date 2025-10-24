@@ -132,7 +132,8 @@ class ExpenseReportService {
           totalAmount,
           createdAt: new Date(localReport.created_at),
           updatedAt: new Date(localReport.updated_at),
-          userId: 'local'
+          userId: 'local',
+          isGeneric: localReport.title === 'Nota Spesa Generica' // Flag per identificare la nota generica
         };
       }
       
