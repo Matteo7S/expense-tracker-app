@@ -9,6 +9,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Modal,
+  FlatList,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -28,9 +30,18 @@ export function RegisterScreen() {
   const [showSyncProgress, setShowSyncProgress] = useState(false);
   const [registrationCompleted, setRegistrationCompleted] = useState(false);
 
+  // Company selection state
+  const [company, setCompany] = useState('');
+  const [showCompanyModal, setShowCompanyModal] = useState(false);
+
+  const COMPANIES = [
+    { id: 'casa_optima', label: 'Casa Optima' },
+    { id: 'surgital', label: 'Surgital' }
+  ];
+
   const handleRegister = async () => {
-    if (!name || !email || !password || !confirmPassword) {
-      Alert.alert('Errore', 'Per favore compila tutti i campi');
+    if (!name || !email || !password || !confirmPassword || !company) {
+      Alert.alert('Errore', 'Per favore compila tutti i campi, inclusa l\'azienda');
       return;
     }
 
@@ -47,10 +58,10 @@ export function RegisterScreen() {
     try {
       // Mostra progress sync immediato dopo registrazione
       setShowSyncProgress(true);
-      
-      await register(email, password, name);
+
+      await register(email, password, name, company);
       setRegistrationCompleted(true);
-      
+
       console.log('✅ Registration completed, sync progress will be shown');
     } catch (error: any) {
       setShowSyncProgress(false);
@@ -154,7 +165,7 @@ export function RegisterScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
-      
+
       {/* Post-Registration Sync Progress Modal */}
       <PostRegistrationSyncProgressComponent
         visible={showSyncProgress && registrationCompleted}
@@ -162,6 +173,41 @@ export function RegisterScreen() {
         onSkip={handleSyncProgressSkip}
         allowSkip={true}
       />
+
+      {/* Company Selection Modal */}
+      <Modal
+        visible={showCompanyModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowCompanyModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Seleziona Azienda</Text>
+            <FlatList
+              data={COMPANIES}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.modalItem}
+                  onPress={() => {
+                    setCompany(item.label);
+                    setShowCompanyModal(false);
+                  }}
+                >
+                  <Text style={styles.modalItemText}>{item.label}</Text>
+                </TouchableOpacity>
+              )}
+            />
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowCompanyModal(false)}
+            >
+              <Text style={styles.modalCloseButtonText}>Annulla</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -247,5 +293,58 @@ const styles = StyleSheet.create({
   linkText: {
     color: '#007AFF',
     fontSize: 16,
+  },
+  dropdownButton: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    padding: 15,
+    borderRadius: 8,
+    backgroundColor: '#fafafa',
+  },
+  dropdownText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  placeholderText: {
+    color: '#C7C7CD', // Default placeholder color for iOS
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    minHeight: 300,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  modalItem: {
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  modalItemText: {
+    fontSize: 18,
+    color: '#333',
+  },
+  modalCloseButton: {
+    marginTop: 20,
+    padding: 15,
+    backgroundColor: '#eee',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalCloseButtonText: {
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '600',
   },
 });

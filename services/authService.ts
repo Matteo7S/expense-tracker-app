@@ -16,7 +16,9 @@ interface RegisterRequest {
   email: string;
   password: string;
   firstName: string;
+
   lastName: string;
+  company?: string;
 }
 
 interface ChangePasswordRequest {
@@ -39,17 +41,18 @@ class AuthService {
     throw new Error(response.error || 'Login failed');
   }
 
-  async register(email: string, password: string, name: string): Promise<User> {
+  async register(email: string, password: string, name: string, company?: string): Promise<User> {
     // Split name into firstName and lastName
     const nameParts = name.trim().split(' ');
     const firstName = nameParts[0] || '';
     const lastName = nameParts.slice(1).join(' ') || firstName;
-    
+
     const response = await apiClient.authPost<ApiResponse<LoginResponse>>('/auth/register', {
       email,
       password,
       firstName,
       lastName,
+      company,
     });
 
     if (response.success && response.data) {
@@ -77,11 +80,11 @@ class AuthService {
 
       // Use authGet instead of authPost for /auth/me
       const response = await apiClient.authGet<ApiResponse<User>>('/auth/me');
-      
+
       if (response.success && response.data) {
         return response.data;
       }
-      
+
       return null;
     } catch (error) {
       // Safely remove token on error

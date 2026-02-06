@@ -58,18 +58,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const register = async (email: string, password: string, name: string): Promise<void> => {
+  const register = async (email: string, password: string, name: string, company?: string): Promise<void> => {
     setLoading(true);
     try {
       // 1. Registra l'utente
-      const newUser = await authService.register(email, password, name);
+      const newUser = await authService.register(email, password, name, company);
       console.log('👤 [AUTH] New user registered:', newUser.email, 'ID:', newUser.id);
       databaseManager.setCurrentUserId(newUser.id);
       setUser(newUser);
-      
+
       // 2. Avvia sync post-registrazione in background
       console.log('🚀 Starting post-registration sync...');
-      
+
       // Non bloccare l'UI - avvia in background
       postRegistrationSyncService.performPostRegistrationSync(newUser, {
         // Usa i valori predefiniti del servizio (Nota Spesa Generica)
@@ -89,7 +89,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         console.error('❌ Post-registration sync failed:', error);
         // Non fallire la registrazione per problemi di sync
       });
-      
+
     } catch (error) {
       console.error('Registration error:', error);
       throw error;
@@ -102,17 +102,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setLoading(true);
     try {
       console.log('👋 [AUTH] User logging out');
-      
+
       // Pulisci i dati dell'utente corrente dal database locale
       await databaseManager.clearCurrentUserData();
-      
+
       // Logout dal server
       await authService.logout();
-      
+
       // Reset stato
       databaseManager.setCurrentUserId(null);
       setUser(null);
-      
+
       console.log('✅ [AUTH] Logout completed');
     } catch (error) {
       console.error('Logout error:', error);
