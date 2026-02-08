@@ -83,7 +83,8 @@ class SmartReceiptAnalyzer {
     const processedLines = this.preprocessText(text);
 
     // Estrazione parallela delle informazioni
-    const [amounts, dates, merchant, category] = await Promise.all([
+    // Estrazione parallela delle informazioni
+    const [amounts, dates, merchant, category, fuelInfo] = await Promise.all([
       this.extractAmounts(processedLines),
       this.extractDates(processedLines),
       this.extractMerchantInfo(processedLines),
@@ -990,9 +991,14 @@ class SmartReceiptAnalyzer {
         ]
       },
       {
+        category: 'fuel',
+        keywords: ['benzina', 'diesel', 'gas', 'carburante', 'eni', 'shell', 'q8', 'agip', 'esso', 'tamoil', 'ip', 'gpl', 'metano', 'adblue', 'rifornimento', 'erogatore', 'pompa'],
+        patterns: [/(?:litri|self|service|pompa|erog)/i]
+      },
+      {
         category: 'transport',
-        keywords: ['benzina', 'diesel', 'gas', 'carburante', 'eni', 'shell', 'q8', 'agip', 'taxi', 'uber', 'treno', 'aereo'],
-        patterns: [/(?:litri|self|service)/i]
+        keywords: ['taxi', 'uber', 'treno', 'aereo', 'biglietto', 'pedaggio', 'autostrada', 'telepass', 'parcheggio', 'bus', 'metro'],
+        patterns: []
       },
       {
         category: 'health',

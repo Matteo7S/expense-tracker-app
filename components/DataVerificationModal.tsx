@@ -85,6 +85,7 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
     { value: 'entertainment', label: 'Intrattenimento', icon: 'movie' },
     { value: 'shopping', label: 'Shopping', icon: 'shopping-bag' },
     { value: 'health', label: 'Salute', icon: 'local-hospital' },
+    { value: 'fuel', label: 'Carburante', icon: 'local-gas-station' },
     { value: 'business', label: 'Business', icon: 'business' },
     { value: 'other', label: 'Altro', icon: 'more-horiz' },
   ];
@@ -425,8 +426,8 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          {/* Sezione Carburante e Kilometri (visibile solo se rilevati o categoria transport) */}
-          {(category === 'transport' || kilometers || fuelLiters || fuelType) && (
+          {/* Sezione Carburante e Kilometri (visibile solo se rilevati o categoria transport/fuel) */}
+          {(category === 'transport' || category === 'fuel' || kilometers || fuelLiters || fuelType) && (
             <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle}>Dati Veicolo</Text>
 
