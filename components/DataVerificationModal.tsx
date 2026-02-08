@@ -31,7 +31,13 @@ export interface ExtractedData {
     time?: number;
     merchant?: number;
     category?: number;
+    kilometers?: number;
+    fuelLiters?: number;
+    fuelType?: number;
   };
+  kilometers?: number;
+  fuelLiters?: number;
+  fuelType?: string;
 }
 
 interface DataVerificationModalProps {
@@ -65,6 +71,12 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
 
+  // Fuel specific state
+  const [kilometers, setKilometers] = useState<string>('');
+  const [fuelLiters, setFuelLiters] = useState<string>('');
+  const [fuelType, setFuelType] = useState<string>('');
+  const [showFuelTypePicker, setShowFuelTypePicker] = useState(false);
+
   // Lista categorie disponibili
   const categories = [
     { value: 'food', label: 'Cibo e Bevande', icon: 'restaurant' },
@@ -77,6 +89,15 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
     { value: 'other', label: 'Altro', icon: 'more-horiz' },
   ];
 
+  const fuelTypes = [
+    { value: 'Diesel', label: 'Diesel' },
+    { value: 'Benzina', label: 'Benzina' },
+    { value: 'GPL', label: 'GPL' },
+    { value: 'Metano', label: 'Metano' },
+    { value: 'AdBlue', label: 'AdBlue' },
+    { value: 'Elettrico', label: 'Elettrico' },
+  ];
+
   // Inizializza i campi quando si apre la modal o cambiano i dati estratti
   useEffect(() => {
     if (visible && extractedData) {
@@ -84,12 +105,12 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
       setCurrency(extractedData.currency || 'EUR');
       setMerchantName(extractedData.merchantName || '');
       setCategory(extractedData.category || 'other');
-      
+
       // Imposta la data
       if (extractedData.date) {
         const date = new Date(extractedData.date);
         setSelectedDate(date);
-        
+
         // Se c'è anche l'ora, la imposta
         if (extractedData.time) {
           const [hours, minutes] = extractedData.time.split(':');
@@ -104,6 +125,15 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
         setSelectedDate(now);
         setSelectedTime(now);
       }
+    }
+  }, [visible, extractedData]);
+
+  // Update fuel fields when extracted data changes
+  useEffect(() => {
+    if (visible && extractedData) {
+      setKilometers(extractedData.kilometers ? extractedData.kilometers.toString().replace('.', ',') : '');
+      setFuelLiters(extractedData.fuelLiters ? extractedData.fuelLiters.toString().replace('.', ',') : '');
+      setFuelType(extractedData.fuelType || '');
     }
   }, [visible, extractedData]);
 
@@ -160,9 +190,9 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
   };
 
   const formatTime = (time: Date) => {
-    return time.toLocaleTimeString('it-IT', { 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    return time.toLocaleTimeString('it-IT', {
+      hour: '2-digit',
+      minute: '2-digit'
     });
   };
 
@@ -193,7 +223,13 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
         time: 1.0,
         merchant: merchantName !== (extractedData.merchantName || '') ? 1.0 : extractedData.confidence?.merchant,
         category: category !== (extractedData.category || 'other') ? 1.0 : extractedData.confidence?.category,
-      }
+        kilometers: kilometers ? (kilometers !== (extractedData.kilometers?.toString().replace('.', ',') || '') ? 1.0 : extractedData.confidence?.kilometers) : undefined,
+        fuelLiters: fuelLiters ? (fuelLiters !== (extractedData.fuelLiters?.toString().replace('.', ',') || '') ? 1.0 : extractedData.confidence?.fuelLiters) : undefined,
+        fuelType: fuelType ? (fuelType !== (extractedData.fuelType || '') ? 1.0 : extractedData.confidence?.fuelType) : undefined,
+      },
+      kilometers: kilometers ? parseFloat(kilometers.replace(',', '.')) : undefined,
+      fuelLiters: fuelLiters ? parseFloat(fuelLiters.replace(',', '.')) : undefined,
+      fuelType: fuelType || undefined,
     };
 
     onConfirm(confirmedData);
@@ -234,7 +270,7 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
               <Text style={styles.fieldLabel}>Importo *</Text>
               <View style={styles.confidenceIndicator}>
                 <View style={[
-                  styles.confidenceDot, 
+                  styles.confidenceDot,
                   { backgroundColor: getConfidenceColor(extractedData.confidence?.amount) }
                 ]} />
                 <Text style={styles.confidenceText}>
@@ -244,7 +280,7 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
             </View>
             <View style={[
               styles.amountContainer,
-              { 
+              {
                 borderColor: getConfidenceColor(extractedData.confidence?.amount),
                 borderWidth: 2
               }
@@ -267,7 +303,7 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
               <Text style={styles.fieldLabel}>Data</Text>
               <View style={styles.confidenceIndicator}>
                 <View style={[
-                  styles.confidenceDot, 
+                  styles.confidenceDot,
                   { backgroundColor: getConfidenceColor(extractedData.confidence?.date) }
                 ]} />
                 <Text style={styles.confidenceText}>
@@ -275,10 +311,10 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
                 </Text>
               </View>
             </View>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[
                 styles.dateTimeButton,
-                { 
+                {
                   borderColor: getConfidenceColor(extractedData.confidence?.date),
                   borderWidth: 2
                 }
@@ -298,7 +334,7 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
               <Text style={styles.fieldLabel}>Ora</Text>
               <View style={styles.confidenceIndicator}>
                 <View style={[
-                  styles.confidenceDot, 
+                  styles.confidenceDot,
                   { backgroundColor: getConfidenceColor(extractedData.confidence?.time) }
                 ]} />
                 <Text style={styles.confidenceText}>
@@ -306,10 +342,10 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
                 </Text>
               </View>
             </View>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[
                 styles.dateTimeButton,
-                { 
+                {
                   borderColor: getConfidenceColor(extractedData.confidence?.time),
                   borderWidth: 2
                 }
@@ -329,7 +365,7 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
               <Text style={styles.fieldLabel}>Esercente</Text>
               <View style={styles.confidenceIndicator}>
                 <View style={[
-                  styles.confidenceDot, 
+                  styles.confidenceDot,
                   { backgroundColor: getConfidenceColor(extractedData.confidence?.merchant) }
                 ]} />
                 <Text style={styles.confidenceText}>
@@ -340,7 +376,7 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
             <TextInput
               style={[
                 styles.textInput,
-                { 
+                {
                   borderColor: getConfidenceColor(extractedData.confidence?.merchant),
                   borderWidth: 2
                 }
@@ -358,7 +394,7 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
               <Text style={styles.fieldLabel}>Categoria</Text>
               <View style={styles.confidenceIndicator}>
                 <View style={[
-                  styles.confidenceDot, 
+                  styles.confidenceDot,
                   { backgroundColor: getConfidenceColor(extractedData.confidence?.category) }
                 ]} />
                 <Text style={styles.confidenceText}>
@@ -366,10 +402,10 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
                 </Text>
               </View>
             </View>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[
                 styles.dateTimeButton,
-                { 
+                {
                   borderColor: getConfidenceColor(extractedData.confidence?.category),
                   borderWidth: 2
                 }
@@ -377,10 +413,10 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
               onPress={() => setShowCategoryPicker(true)}
               disabled={isLoading}
             >
-              <MaterialIcons 
-                name={categories.find(c => c.value === category)?.icon as any || 'label'} 
-                size={20} 
-                color="#007AFF" 
+              <MaterialIcons
+                name={categories.find(c => c.value === category)?.icon as any || 'label'}
+                size={20}
+                color="#007AFF"
               />
               <Text style={styles.dateTimeText}>
                 {categories.find(c => c.value === category)?.label || 'Seleziona categoria'}
@@ -388,6 +424,47 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
               <MaterialIcons name="arrow-drop-down" size={20} color="#666" />
             </TouchableOpacity>
           </View>
+
+          {/* Sezione Carburante e Kilometri (visibile solo se rilevati o categoria transport) */}
+          {(category === 'transport' || kilometers || fuelLiters || fuelType) && (
+            <View style={styles.sectionContainer}>
+              <Text style={styles.sectionTitle}>Dati Veicolo</Text>
+
+              {/* Kilometri */}
+              <View style={styles.fieldContainer}>
+                <View style={styles.fieldHeader}>
+                  <Text style={styles.fieldLabel}>Kilometri</Text>
+                  {extractedData.confidence?.kilometers && (
+                    <View style={styles.confidenceIndicator}>
+                      <View style={[
+                        styles.confidenceDot,
+                        { backgroundColor: getConfidenceColor(extractedData.confidence?.kilometers) }
+                      ]} />
+                      <Text style={styles.confidenceText}>
+                        {getConfidenceText(extractedData.confidence?.kilometers)}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <TextInput
+                  style={[
+                    styles.textInput,
+                    extractedData.confidence?.kilometers ? {
+                      borderColor: getConfidenceColor(extractedData.confidence?.kilometers),
+                      borderWidth: 2
+                    } : {}
+                  ]}
+                  value={kilometers}
+                  onChangeText={(text) => setKilometers(text.replace(/[^0-9,\.]/g, ''))}
+                  placeholder="Es. 125000"
+                  keyboardType="decimal-pad"
+                  editable={!isLoading}
+                />
+              </View>
+
+              {/* Litri e Carburante nascosti da UI come richiesto, ma preservati per il salvataggio */}
+            </View>
+          )}
 
           {/* Info sui livelli di confidenza */}
           <View style={styles.infoContainer}>
@@ -492,10 +569,10 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
                       setShowCategoryPicker(false);
                     }}
                   >
-                    <MaterialIcons 
-                      name={cat.icon as any} 
-                      size={24} 
-                      color={category === cat.value ? '#007AFF' : '#666'} 
+                    <MaterialIcons
+                      name={cat.icon as any}
+                      size={24}
+                      color={category === cat.value ? '#007AFF' : '#666'}
                     />
                     <Text style={[
                       styles.categoryPickerItemText,
@@ -504,6 +581,48 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
                       {cat.label}
                     </Text>
                     {category === cat.value && (
+                      <MaterialIcons name="check" size={24} color="#007AFF" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
+        )}
+
+        {/* Fuel Type Picker */}
+        {showFuelTypePicker && (
+          <View style={styles.pickerOverlay}>
+            <View style={styles.pickerContainer}>
+              <View style={styles.pickerHeader}>
+                <TouchableOpacity onPress={() => setShowFuelTypePicker(false)}>
+                  <Text style={styles.pickerCancelText}>Annulla</Text>
+                </TouchableOpacity>
+                <Text style={styles.pickerTitle}>Seleziona Carburante</Text>
+                <TouchableOpacity onPress={() => setShowFuelTypePicker(false)}>
+                  <Text style={styles.pickerConfirmText}>Conferma</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.categoryPickerList}>
+                {fuelTypes.map((fuel) => (
+                  <TouchableOpacity
+                    key={fuel.value}
+                    style={[
+                      styles.categoryPickerItem,
+                      fuelType === fuel.value && styles.categoryPickerItemSelected,
+                    ]}
+                    onPress={() => {
+                      setFuelType(fuel.value);
+                      setShowFuelTypePicker(false);
+                    }}
+                  >
+                    <Text style={[
+                      styles.categoryPickerItemText,
+                      fuelType === fuel.value && styles.categoryPickerItemTextSelected,
+                    ]}>
+                      {fuel.label}
+                    </Text>
+                    {fuelType === fuel.value && (
                       <MaterialIcons name="check" size={24} color="#007AFF" />
                     )}
                   </TouchableOpacity>
@@ -544,6 +663,25 @@ const styles = StyleSheet.create({
   },
   disabledText: {
     color: '#9e9e9e',
+  },
+  sectionContainer: {
+    marginTop: 8,
+    marginBottom: 24,
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#212529',
+    marginBottom: 16,
+  },
+  rowContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
   content: {
     flex: 1,

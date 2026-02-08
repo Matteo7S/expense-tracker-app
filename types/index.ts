@@ -41,6 +41,9 @@ export interface Expense {
   note?: string;
   receipts?: ReceiptInfo[];
   _aiAnalysis?: any; // Dati completi dell'analisi AI per debug
+  kilometers?: number;
+  fuelLiters?: number;
+  fuelType?: string;
 }
 
 export interface ReceiptInfo {

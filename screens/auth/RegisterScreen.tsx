@@ -145,6 +145,21 @@ export function RegisterScreen() {
             />
           </View>
 
+          {/* Company Selection */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Azienda *</Text>
+            <TouchableOpacity
+              style={styles.dropdownButton}
+              onPress={() => setShowCompanyModal(true)}
+            >
+              <Text style={[styles.dropdownText, !company && styles.placeholderText]}>
+                {company
+                  ? COMPANIES.find(c => c.label === company)?.label || company
+                  : 'Seleziona la tua azienda'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           <TouchableOpacity
             style={[styles.button, loading && styles.buttonDisabled]}
             onPress={handleRegister}

@@ -49,6 +49,9 @@ export interface Expense {
   server_id?: string;
   sync_status: 'pending' | 'synced' | 'error';
   last_sync?: string;
+  kilometers?: number;
+  fuel_liters?: number;
+  fuel_type?: string;
 }
 
 export interface SyncQueueItem {
@@ -65,7 +68,7 @@ export interface SyncQueueItem {
 class DatabaseManager {
   private db: SQLite.SQLiteDatabase | null = null;
   private currentUserId: string | null = null;
-  
+
   /**
    * Imposta l'utente corrente per filtrare i dati
    */
@@ -73,33 +76,33 @@ class DatabaseManager {
     console.log('👤 [DB] Setting current user ID:', userId);
     this.currentUserId = userId;
   }
-  
+
   /**
    * Ottiene l'utente corrente
    */
   getCurrentUserId(): string | null {
     return this.currentUserId;
   }
-  
+
   async initDatabase(): Promise<void> {
     try {
       console.log('🗄️ Initializing SQLite database...');
-      
+
       this.db = await SQLite.openDatabaseAsync('expense_tracker.db');
-      
+
       await this.createTables();
       await this.runMigrations();
-      
+
       console.log('✅ Database initialized successfully');
     } catch (error) {
       console.error('❌ Database initialization failed:', error);
       throw error;
     }
   }
-  
+
   private async createTables(): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
-    
+
     // Tabella note spese
     await this.db.execAsync(`
       CREATE TABLE IF NOT EXISTS expense_reports (
@@ -117,7 +120,7 @@ class DatabaseManager {
         last_sync TEXT
       );
     `);
-    
+
     // Tabella spese
     await this.db.execAsync(`
       CREATE TABLE IF NOT EXISTS expenses (
@@ -145,7 +148,7 @@ class DatabaseManager {
         FOREIGN KEY (expense_report_id) REFERENCES expense_reports (id)
       );
     `);
-    
+
     // Coda di sincronizzazione
     await this.db.execAsync(`
       CREATE TABLE IF NOT EXISTS sync_queue (
@@ -159,7 +162,7 @@ class DatabaseManager {
         last_error TEXT
       );
     `);
-    
+
     // Indici per performance
     await this.db.execAsync(`
       CREATE INDEX IF NOT EXISTS idx_expenses_report_id ON expenses(expense_report_id);
@@ -169,11 +172,11 @@ class DatabaseManager {
       CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(table_name, action);
     `);
   }
-  
+
   private async runMigrations(): Promise<void> {
     const currentVersion = await this.getDbVersion();
     console.log(`📊 Database version: ${currentVersion}`);
-    
+
     // Migrazione 1: Aggiunta colonna user_id
     if (currentVersion <= 1) {
       console.log('📊 Running migration 1: Adding user_id column to expense_reports');
@@ -186,7 +189,7 @@ class DatabaseManager {
       }
       await this.setDbVersion(2);
     }
-    
+
     // Migrazione 2: Aggiunta colonne start_date e end_date
     if (currentVersion <= 2) {
       console.log('📊 Running migration 2: Adding start_date and end_date columns to expense_reports');
@@ -200,7 +203,7 @@ class DatabaseManager {
       }
       await this.setDbVersion(3);
     }
-    
+
     // Migrazione 3: Assegna user_id corrente alle note spese esistenti senza user_id
     if (currentVersion <= 3) {
       console.log('📊 Running migration 3: Assigning current user_id to expense reports without user_id');
@@ -219,11 +222,25 @@ class DatabaseManager {
       }
       await this.setDbVersion(4);
     }
+
+    // Migrazione 4: Aggiunta colonne per carburante e kilometraggio
+    if (currentVersion <= 4) {
+      console.log('📊 Running migration 4: Adding kilometers, fuel_liters, and fuel_type columns');
+      try {
+        await this.db?.execAsync('ALTER TABLE expenses ADD COLUMN kilometers REAL');
+        await this.db?.execAsync('ALTER TABLE expenses ADD COLUMN fuel_liters REAL');
+        await this.db?.execAsync('ALTER TABLE expenses ADD COLUMN fuel_type TEXT');
+        console.log('✅ Migration 4 completed: Fuel and mileage columns added');
+      } catch (error) {
+        console.log('⚠️ Migration 4 skipped: Columns might already exist');
+      }
+      await this.setDbVersion(5);
+    }
   }
-  
+
   private async getDbVersion(): Promise<number> {
     if (!this.db) return 0;
-    
+
     try {
       // Crea tabella versione se non esiste
       await this.db.execAsync(`
@@ -231,55 +248,55 @@ class DatabaseManager {
           version INTEGER NOT NULL
         );
       `);
-      
-      const result = await this.db.getFirstAsync<{version: number}>('SELECT version FROM db_version LIMIT 1');
-      
+
+      const result = await this.db.getFirstAsync<{ version: number }>('SELECT version FROM db_version LIMIT 1');
+
       if (!result) {
         // Prima installazione - imposta versione 1
         await this.db.execAsync('INSERT INTO db_version (version) VALUES (1)');
         return 1;
       }
-      
+
       return result.version;
     } catch (error) {
       console.error('Error getting database version:', error);
       return 1;
     }
   }
-  
+
   private async setDbVersion(version: number): Promise<void> {
     if (!this.db) return;
-    
+
     try {
       // Prova prima UPDATE, poi INSERT se non ci sono righe
       const result = await this.db.runAsync('UPDATE db_version SET version = ?', [version]);
-      
+
       if (result.changes === 0) {
         // Nessuna riga aggiornata, inserisci
         await this.db.runAsync('INSERT INTO db_version (version) VALUES (?)', [version]);
       }
-      
+
       console.log(`📊 Database version updated to ${version}`);
     } catch (error) {
       console.error('Error setting database version:', error);
     }
   }
-  
+
   // EXPENSE REPORTS CRUD
-  
+
   async createExpenseReport(report: Omit<ExpenseReport, 'id' | 'created_at' | 'updated_at'>): Promise<string> {
     if (!this.db) throw new Error('Database not initialized');
-    
+
     const id = this.generateId();
     const now = new Date().toISOString();
-    
+
     const fullReport: ExpenseReport = {
       ...report,
       id,
       created_at: now,
       updated_at: now
     };
-    
+
     await this.db.runAsync(`
       INSERT INTO expense_reports (
         id, title, description, start_date, end_date, user_id, created_at, updated_at, is_archived, 
@@ -299,138 +316,138 @@ class DatabaseManager {
       fullReport.sync_status,
       fullReport.last_sync || null
     ]);
-    
+
     // Aggiungi alla coda di sync
     await this.addToSyncQueueInternal('expense_reports', id, 'create', fullReport);
-    
+
     return id;
   }
-  
+
   async getExpenseReports(includeArchived = false): Promise<ExpenseReport[]> {
     if (!this.db) throw new Error('Database not initialized');
-    
+
     console.log('📋 [DB] getExpenseReports - Current user ID:', this.currentUserId);
-    
+
     let query: string;
     let params: any[];
-    
+
     if (this.currentUserId) {
       // Filtra per utente corrente
-      query = includeArchived 
+      query = includeArchived
         ? 'SELECT * FROM expense_reports WHERE user_id = ? ORDER BY created_at DESC'
         : 'SELECT * FROM expense_reports WHERE user_id = ? AND is_archived = 0 ORDER BY created_at DESC';
       params = [this.currentUserId];
     } else {
       // Nessun filtro utente (per compatibilità)
-      query = includeArchived 
+      query = includeArchived
         ? 'SELECT * FROM expense_reports ORDER BY created_at DESC'
         : 'SELECT * FROM expense_reports WHERE is_archived = 0 ORDER BY created_at DESC';
       params = [];
     }
-    
+
     const reports = await this.db.getAllAsync<ExpenseReport>(query, params);
-    
+
     console.log(`📋 [DB] Found ${reports.length} expense reports for user ${this.currentUserId || 'all'}`);
-    
+
     return reports.map(report => ({
       ...report,
       is_archived: Boolean(report.is_archived)
     }));
   }
-  
+
   async getExpenseReportById(id: string): Promise<ExpenseReport | null> {
     if (!this.db) throw new Error('Database not initialized');
-    
+
     const report = await this.db.getFirstAsync<ExpenseReport>(
       'SELECT * FROM expense_reports WHERE id = ?',
       [id]
     );
-    
+
     if (!report) return null;
-    
+
     return {
       ...report,
       is_archived: Boolean(report.is_archived)
     };
   }
-  
+
   async updateExpenseReport(id: string, updates: Partial<ExpenseReport>): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
-    
+
     const now = new Date().toISOString();
     const updatedReport = {
       ...updates,
       updated_at: now,
       sync_status: 'pending' as const
     };
-    
+
     const setClause = Object.keys(updatedReport)
       .map(key => `${key} = ?`)
       .join(', ');
-    
+
     const values = Object.values(updatedReport);
     values.push(id);
-    
+
     await this.db.runAsync(
       `UPDATE expense_reports SET ${setClause} WHERE id = ?`,
       values
     );
-    
+
     // Aggiungi alla coda di sync
     const fullReport = await this.getExpenseReportById(id);
     if (fullReport) {
       await this.addToSyncQueueInternal('expense_reports', id, 'update', fullReport);
     }
   }
-  
+
   async archiveExpenseReport(id: string): Promise<void> {
-    await this.updateExpenseReport(id, { 
+    await this.updateExpenseReport(id, {
       is_archived: true,
       sync_status: 'pending'
     });
   }
-  
+
   async archiveExpenseReportWithExpenses(id: string): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
-    
+
     console.log(`🗂️ Archiving expense report ${id} and all associated expenses...`);
-    
+
     // Prima archivia la nota spese
     await this.archiveExpenseReport(id);
     console.log(`✅ Expense report ${id} archived`);
-    
+
     // Poi archivia tutte le spese associate
     const expenses = await this.getExpensesByReportId(id, false); // Solo spese non archiviate
     console.log(`📋 Found ${expenses.length} active expenses to archive`);
-    
+
     for (const expense of expenses) {
       await this.archiveExpense(expense.id);
       console.log(`✅ Expense ${expense.id} archived`);
     }
-    
+
     console.log(`🎉 Successfully archived expense report ${id} with ${expenses.length} expenses`);
   }
-  
+
   // EXPENSES CRUD
-  
+
   async createExpense(expense: Omit<Expense, 'id' | 'created_at' | 'updated_at'>): Promise<string> {
     if (!this.db) throw new Error('Database not initialized');
-    
+
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('📦 [DB] Creating expense in local database...');
-    
+
     const id = this.generateId();
     const now = new Date().toISOString();
-    
+
     console.log('🆔 [DB] Generated local ID:', id);
-    
+
     const fullExpense: Expense = {
       ...expense,
       id,
       created_at: now,
       updated_at: now
     };
-    
+
     console.log('📋 [DB] Expense details:', {
       id: fullExpense.id,
       expense_report_id: fullExpense.expense_report_id,
@@ -442,15 +459,15 @@ class DatabaseManager {
       sync_status: fullExpense.sync_status,
       hasImage: !!fullExpense.receipt_image_path
     });
-    
+
     console.log('💾 [DB] Inserting expense into SQLite...');
     await this.db.runAsync(`
       INSERT INTO expenses (
         id, expense_report_id, amount, currency, merchant_name, merchant_address,
         merchant_vat, category, receipt_date, receipt_time, receipt_image_path,
         receipt_image_url, receipt_thumbnail_url, extracted_data, notes, created_at, updated_at,
-        is_archived, server_id, sync_status, last_sync
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        is_archived, server_id, sync_status, last_sync, kilometers, fuel_liters, fuel_type
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       fullExpense.id,
       fullExpense.expense_report_id,
@@ -472,50 +489,53 @@ class DatabaseManager {
       fullExpense.is_archived ? 1 : 0,
       fullExpense.server_id || null,
       fullExpense.sync_status,
-      fullExpense.last_sync || null
+      fullExpense.last_sync || null,
+      fullExpense.kilometers || null,
+      fullExpense.fuel_liters || null,
+      fullExpense.fuel_type || null
     ]);
-    
+
     console.log('✅ [DB] Expense inserted successfully into SQLite');
-    
+
     // Aggiungi alla coda di sync
     console.log('🔄 [DB] Adding expense to sync queue...');
     await this.addToSyncQueueInternal('expenses', id, 'create', fullExpense);
     console.log('✅ [DB] Expense added to sync queue');
-    
+
     console.log('🆔 [DB] Final local expense ID:', id);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    
+
     return id;
   }
-  
+
   async getExpensesByReportId(reportId: string, includeArchived = false): Promise<Expense[]> {
     if (!this.db) throw new Error('Database not initialized');
-    
+
     const query = includeArchived
       ? 'SELECT * FROM expenses WHERE expense_report_id = ? ORDER BY receipt_date DESC, created_at DESC'
       : 'SELECT * FROM expenses WHERE expense_report_id = ? AND is_archived = 0 ORDER BY receipt_date DESC, created_at DESC';
-    
+
     const expenses = await this.db.getAllAsync<Expense>(query, [reportId]);
-    
+
     return expenses.map(expense => ({
       ...expense,
       is_archived: Boolean(expense.is_archived)
     }));
   }
-  
+
   async getExpenseById(id: string): Promise<Expense | null> {
     if (!this.db) throw new Error('Database not initialized');
-    
+
     console.log(`🔍 getExpenseById called with ID: ${id}`);
-    
+
     // Prima prova con l'ID locale
     let expense = await this.db.getFirstAsync<Expense>(
       'SELECT * FROM expenses WHERE id = ?',
       [id]
     );
-    
+
     console.log(`🔍 Search by local ID result:`, expense ? `Found expense with local ID ${expense.id}` : 'Not found');
-    
+
     // Se non trovato, prova con server_id
     if (!expense) {
       expense = await this.db.getFirstAsync<Expense>(
@@ -524,50 +544,50 @@ class DatabaseManager {
       );
       console.log(`🔍 Search by server_id result:`, expense ? `Found expense with local ID ${expense.id} and server_id ${expense.server_id}` : 'Not found');
     }
-    
+
     if (!expense) {
       console.log(`❌ getExpenseById: No expense found for ID ${id}`);
       return null;
     }
-    
+
     console.log(`✅ getExpenseById: Found expense - Local ID: ${expense.id}, Server ID: ${expense.server_id || 'none'}, Amount: ${expense.amount}`);
-    
+
     return {
       ...expense,
       is_archived: Boolean(expense.is_archived)
     };
   }
-  
+
   async updateExpense(id: string, updates: Partial<Expense>): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
-    
+
     // Prima trova l'expense (potrebbe essere passato local_id o server_id)
     const expense = await this.getExpenseById(id);
     if (!expense) {
       throw new Error(`Expense not found with ID: ${id}`);
     }
-    
+
     const localId = expense.id; // Usa sempre il local_id per l'update
-    
+
     const now = new Date().toISOString();
     const updatedExpense = {
       ...updates,
       updated_at: now,
       sync_status: 'pending' as const
     };
-    
+
     const setClause = Object.keys(updatedExpense)
       .map(key => `${key} = ?`)
       .join(', ');
-    
+
     const values = Object.values(updatedExpense);
     values.push(localId);
-    
+
     await this.db.runAsync(
       `UPDATE expenses SET ${setClause} WHERE id = ?`,
       values
     );
-    
+
     // Aggiungi alla coda di sync solo se l'expense ha un server_id
     const fullExpense = await this.getExpenseById(localId);
     if (fullExpense && fullExpense.server_id) {
@@ -581,67 +601,67 @@ class DatabaseManager {
       console.log(`🔄 Skipping sync queue for local-only expense: ${localId}`);
     }
   }
-  
+
   async moveExpenseToReport(expenseId: string, newReportId: string): Promise<void> {
     await this.updateExpense(expenseId, {
       expense_report_id: newReportId
     });
   }
-  
+
   async archiveExpense(id: string): Promise<void> {
-    await this.updateExpense(id, { 
+    await this.updateExpense(id, {
       is_archived: true,
       sync_status: 'pending'
     });
   }
-  
+
   async updateExpenseArchiveStatus(id: string, isArchived: boolean): Promise<void> {
-    await this.updateExpense(id, { 
+    await this.updateExpense(id, {
       is_archived: isArchived,
       sync_status: 'pending'
     });
   }
-  
+
   /**
    * Updates expense without adding to sync queue - useful for local operations like restore
    */
   async updateExpenseLocal(id: string, updates: Partial<Expense>): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
-    
+
     const now = new Date().toISOString();
     const updatedExpense = {
       ...updates,
       updated_at: now
       // Note: NOT setting sync_status to pending for local operations
     };
-    
+
     const setClause = Object.keys(updatedExpense)
       .map(key => `${key} = ?`)
       .join(', ');
-    
+
     const values = Object.values(updatedExpense);
     values.push(id);
-    
+
     await this.db.runAsync(
       `UPDATE expenses SET ${setClause} WHERE id = ?`,
       values
     );
-    
+
     console.log(`💾 Local update completed for expense: ${id}`);
   }
-  
+
   async deleteExpense(id: string): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
-    
+
     // Prima recupera i dati della spesa per la coda di sync
     const expense = await this.getExpenseById(id);
     if (!expense) {
       throw new Error('Expense not found');
     }
-    
+
     // Elimina dal database locale usando l'ID locale (non server_id)
     await this.db.runAsync('DELETE FROM expenses WHERE id = ?', [expense.id]);
-    
+
     // Aggiungi alla coda di sync solo se ha un server_id
     if (expense.server_id) {
       await this.addToSyncQueue({
@@ -651,73 +671,73 @@ class DatabaseManager {
         data: expense
       });
     }
-    
+
     console.log(`🗑️ Expense ${expense.id} deleted from local database`);
   }
-  
+
   // FILTRI TEMPORALI
-  
+
   async getExpenseReportsByDateRange(startDate: string, endDate: string, includeArchived = false): Promise<ExpenseReport[]> {
     if (!this.db) throw new Error('Database not initialized');
-    
+
     const query = includeArchived
       ? 'SELECT * FROM expense_reports WHERE created_at BETWEEN ? AND ? ORDER BY created_at DESC'
       : 'SELECT * FROM expense_reports WHERE created_at BETWEEN ? AND ? AND is_archived = 0 ORDER BY created_at DESC';
-    
+
     const reports = await this.db.getAllAsync<ExpenseReport>(query, [startDate, endDate]);
-    
+
     return reports.map(report => ({
       ...report,
       is_archived: Boolean(report.is_archived)
     }));
   }
-  
+
   async getExpensesByDateRange(startDate: string, endDate: string, reportId?: string, includeArchived = false): Promise<Expense[]> {
     if (!this.db) throw new Error('Database not initialized');
-    
+
     let query = 'SELECT * FROM expenses WHERE receipt_date BETWEEN ? AND ?';
     const params: any[] = [startDate, endDate];
-    
+
     if (reportId) {
       query += ' AND expense_report_id = ?';
       params.push(reportId);
     }
-    
+
     if (!includeArchived) {
       query += ' AND is_archived = 0';
     }
-    
+
     query += ' ORDER BY receipt_date DESC, created_at DESC';
-    
+
     const expenses = await this.db.getAllAsync<Expense>(query, params);
-    
+
     return expenses.map(expense => ({
       ...expense,
       is_archived: Boolean(expense.is_archived)
     }));
   }
-  
+
   async getAllArchivedExpenses(): Promise<Expense[]> {
     if (!this.db) throw new Error('Database not initialized');
-    
+
     const expenses = await this.db.getAllAsync<Expense>(
       'SELECT * FROM expenses WHERE is_archived = 1 ORDER BY receipt_date DESC, created_at DESC'
     );
-    
+
     return expenses.map(expense => ({
       ...expense,
       is_archived: Boolean(expense.is_archived)
     }));
   }
-  
+
   // SYNC QUEUE MANAGEMENT
-  
+
   private async addToSyncQueueInternal(tableName: string, recordId: string, action: 'create' | 'update' | 'delete', data: any): Promise<void> {
     if (!this.db) return;
-    
+
     const queueId = this.generateId();
     const now = new Date().toISOString();
-    
+
     await this.db.runAsync(`
       INSERT INTO sync_queue (id, table_name, record_id, action, data, created_at)
       VALUES (?, ?, ?, ?, ?, ?)
@@ -730,38 +750,38 @@ class DatabaseManager {
       now
     ]);
   }
-  
+
   async getSyncQueue(): Promise<SyncQueueItem[]> {
     if (!this.db) throw new Error('Database not initialized');
-    
+
     return await this.db.getAllAsync<SyncQueueItem>(`
       SELECT * FROM sync_queue ORDER BY created_at ASC
     `);
   }
-  
+
   async removeSyncQueueItem(id: string): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
-    
+
     await this.db.runAsync('DELETE FROM sync_queue WHERE id = ?', [id]);
   }
-  
+
   async updateSyncQueueItem(id: string, attempts: number, error?: string): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
-    
+
     await this.db.runAsync(`
       UPDATE sync_queue SET attempts = ?, last_error = ? WHERE id = ?
     `, [attempts, error || null, id]);
   }
-  
+
   /**
    * Rimuove duplicati dalla coda di sync per lo stesso record
    * Gestisce anche il caso di create+update per lo stesso record
    */
   async cleanupSyncQueueDuplicates(): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
-    
+
     console.log('🧆 Cleaning up sync queue duplicates...');
-    
+
     // Prima fase: elimina i duplicati esatti (stessa tabella, record_id e action)
     await this.db.execAsync(`
       DELETE FROM sync_queue 
@@ -777,9 +797,9 @@ class DatabaseManager {
         WHERE rn = 1
       )
     `);
-    
+
     console.log('✅ [SyncQueue] Exact duplicates removed');
-    
+
     // Seconda fase: rimuove gli 'update' se c'è già un 'create' pendente per lo stesso record
     await this.db.execAsync(`
       DELETE FROM sync_queue 
@@ -792,12 +812,12 @@ class DatabaseManager {
         AND sq2.created_at <= sync_queue.created_at
       )
     `);
-    
+
     console.log('✅ [SyncQueue] Redundant updates after create removed');
-    
+
     const remainingItems = await this.getSyncQueue();
     console.log(`✅ Sync queue cleanup completed. Remaining items: ${remainingItems.length}`);
-    
+
     // Log dettagliato degli elementi rimanenti per debugging
     if (remainingItems.length > 0) {
       console.log('📋 Remaining sync queue items:');
@@ -806,16 +826,16 @@ class DatabaseManager {
       });
     }
   }
-  
+
   /**
    * Metodo pubblico per aggiungere elementi alla coda di sync
    */
   async addToSyncQueue(item: { table_name: string; record_id: string; action: 'create' | 'update' | 'delete'; data: any; created_at?: string; attempts?: number }): Promise<void> {
     if (!this.db) return;
-    
+
     const queueId = this.generateId();
     const now = item.created_at || new Date().toISOString();
-    
+
     await this.db.runAsync(`
       INSERT INTO sync_queue (id, table_name, record_id, action, data, created_at, attempts)
       VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -829,25 +849,25 @@ class DatabaseManager {
       item.attempts || 0
     ]);
   }
-  
+
   // UTILITY METHODS
-  
+
   private generateId(): string {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
   }
-  
+
   /**
    * Ottiene o crea la nota spese generica per gli scontrini dalla funzionalità Scansiona
    */
   async getOrCreateGenericExpenseReport(): Promise<string> {
     if (!this.db) throw new Error('Database not initialized');
-    
+
     const GENERIC_TITLE = 'Nota Spesa Generica';
-    
+
     // Cerca se esiste già una nota spese generica per l'utente corrente
     let query: string;
     let params: any[];
-    
+
     if (this.currentUserId) {
       query = 'SELECT * FROM expense_reports WHERE title = ? AND user_id = ? AND is_archived = 0';
       params = [GENERIC_TITLE, this.currentUserId];
@@ -855,21 +875,21 @@ class DatabaseManager {
       query = 'SELECT * FROM expense_reports WHERE title = ? AND is_archived = 0';
       params = [GENERIC_TITLE];
     }
-    
+
     const existingGeneric = await this.db.getFirstAsync<ExpenseReport>(query, params);
-    
+
     if (existingGeneric) {
       console.log('📋 Using existing generic expense report:', existingGeneric.id, 'server_id:', existingGeneric.server_id || 'NULL');
-      
+
       // Verifica se la nota spese esistente ha bisogno di essere sincronizzata
       if (!existingGeneric.server_id && existingGeneric.sync_status !== 'synced') {
         console.log('🔄 Adding existing generic expense report to sync queue');
         await this.addToSyncQueueInternal('expense_reports', existingGeneric.id, 'create', existingGeneric);
       }
-      
+
       return existingGeneric.id;
     }
-    
+
     // Crea una nuova nota spese generica
     console.log('📋 Creating new generic expense report for user:', this.currentUserId || 'no user');
     const genericId = await this.createExpenseReport({
@@ -879,51 +899,51 @@ class DatabaseManager {
       is_archived: false,
       sync_status: 'pending'
     });
-    
+
     console.log('✅ Generic expense report created:', genericId);
     return genericId;
   }
-  
+
   /**
    * Pulisce completamente il database (per sviluppo/debug)
    */
   async clearAllData(): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
-    
+
     console.log('🗑️ Clearing all database data...');
-    
+
     // Cancella tutte le tabelle in ordine per rispettare i vincoli di foreign key
     await this.db.execAsync('DELETE FROM sync_queue');
     await this.db.execAsync('DELETE FROM expenses');
     await this.db.execAsync('DELETE FROM expense_reports');
-    
+
     console.log('✅ All database data cleared');
   }
-  
+
   /**
    * Pulisce i dati dell'utente corrente (usato al logout)
    */
   async clearCurrentUserData(): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
-    
+
     if (!this.currentUserId) {
       console.log('⚠️ [DB] No current user set, clearing all data instead');
       await this.clearAllData();
       return;
     }
-    
+
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('🗑️ [DB LOGOUT] Clearing data for user:', this.currentUserId);
-    
+
     // Prima, ottieni tutti i report dell'utente (inclusi quelli senza user_id)
     // Questo cattura sia i report con user_id esplicito che quelli senza (creati prima della migrazione)
-    const userReports = await this.db.getAllAsync<{id: string}>(
+    const userReports = await this.db.getAllAsync<{ id: string }>(
       'SELECT id FROM expense_reports WHERE user_id = ? OR user_id IS NULL',
       [this.currentUserId]
     );
-    
+
     console.log(`📋 [DB LOGOUT] Found ${userReports.length} expense reports to delete`);
-    
+
     // Cancella le spese associate ai report dell'utente
     for (const report of userReports) {
       const expensesResult = await this.db.runAsync(
@@ -932,17 +952,17 @@ class DatabaseManager {
       );
       console.log(`  - Deleted ${expensesResult.changes} expenses from report ${report.id}`);
     }
-    
+
     console.log('✅ [DB LOGOUT] Deleted all expenses for user reports');
-    
+
     // Cancella i report dell'utente (con o senza user_id)
     const reportResult = await this.db.runAsync(
       'DELETE FROM expense_reports WHERE user_id = ? OR user_id IS NULL',
       [this.currentUserId]
     );
-    
+
     console.log(`✅ [DB LOGOUT] Deleted ${reportResult.changes} expense reports`);
-    
+
     // Cancella gli item nella sync queue relativi ai record eliminati
     const reportIds = userReports.map(r => r.id);
     if (reportIds.length > 0) {
@@ -953,7 +973,7 @@ class DatabaseManager {
       );
       console.log('✅ [DB LOGOUT] Cleared sync queue items for deleted reports');
     }
-    
+
     // Pulisci anche eventuali spese orfane (senza report parent valido)
     const orphanExpensesResult = await this.db.runAsync(
       'DELETE FROM expenses WHERE expense_report_id NOT IN (SELECT id FROM expense_reports)'
@@ -961,14 +981,14 @@ class DatabaseManager {
     if (orphanExpensesResult.changes > 0) {
       console.log(`🧹 [DB LOGOUT] Cleaned up ${orphanExpensesResult.changes} orphan expenses`);
     }
-    
+
     console.log('✅ [DB LOGOUT] All user data cleared successfully');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    
+
     // Reset current user
     this.currentUserId = null;
   }
-  
+
   async getStats(): Promise<{
     totalReports: number;
     totalExpenses: number;
@@ -977,7 +997,7 @@ class DatabaseManager {
     pendingSync: number;
   }> {
     if (!this.db) throw new Error('Database not initialized');
-    
+
     const [
       totalReports,
       totalExpenses,
@@ -985,13 +1005,13 @@ class DatabaseManager {
       archivedExpenses,
       pendingSync
     ] = await Promise.all([
-      this.db.getFirstAsync<{count: number}>('SELECT COUNT(*) as count FROM expense_reports'),
-      this.db.getFirstAsync<{count: number}>('SELECT COUNT(*) as count FROM expenses'),
-      this.db.getFirstAsync<{count: number}>('SELECT COUNT(*) as count FROM expense_reports WHERE is_archived = 1'),
-      this.db.getFirstAsync<{count: number}>('SELECT COUNT(*) as count FROM expenses WHERE is_archived = 1'),
-      this.db.getFirstAsync<{count: number}>('SELECT COUNT(*) as count FROM sync_queue')
+      this.db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM expense_reports'),
+      this.db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM expenses'),
+      this.db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM expense_reports WHERE is_archived = 1'),
+      this.db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM expenses WHERE is_archived = 1'),
+      this.db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM sync_queue')
     ]);
-    
+
     return {
       totalReports: totalReports?.count || 0,
       totalExpenses: totalExpenses?.count || 0,
@@ -1000,19 +1020,19 @@ class DatabaseManager {
       pendingSync: pendingSync?.count || 0
     };
   }
-  
+
   /**
    * Debug method - logs detailed info about expense reports and sync queue
    */
   async debugLocalDatabase(): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
-    
+
     console.log('\n🔍 ==========DEBUG LOCAL DATABASE==========');
-    
+
     // Check all expense reports
     const reports = await this.getExpenseReports(true);
-    console.log(`\n📋 EXPENSE REPORTS (${reports.length}):`); 
-    
+    console.log(`\n📋 EXPENSE REPORTS (${reports.length}):`);
+
     if (reports.length === 0) {
       console.log('❌ No expense reports found');
     } else {
@@ -1025,11 +1045,11 @@ class DatabaseManager {
         console.log(`   Created: ${report.created_at}`);
       });
     }
-    
+
     // Check sync queue
     const queue = await this.getSyncQueue();
-    console.log(`\n\n🔄 SYNC QUEUE (${queue.length}):`); 
-    
+    console.log(`\n\n🔄 SYNC QUEUE (${queue.length}):`);
+
     if (queue.length === 0) {
       console.log('✅ Sync queue is empty');
     } else {
@@ -1041,7 +1061,7 @@ class DatabaseManager {
         console.log(`   Last Error: ${item.last_error || 'none'}`);
       });
     }
-    
+
     console.log('\n🏁 =======================================\n');
   }
 }
