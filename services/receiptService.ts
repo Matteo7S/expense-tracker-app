@@ -31,13 +31,13 @@ class ReceiptService {
   ): Promise<ReceiptUploadResponse> {
     try {
       const formData = new FormData();
-      
+
       const imageFile = {
         uri: imageUri,
         type: 'image/jpeg',
         name: `receipt_${Date.now()}.jpg`,
       } as any;
-      
+
       formData.append('receipt', imageFile);
       formData.append('reportId', reportId);
 
@@ -95,13 +95,13 @@ class ReceiptService {
   }> {
     try {
       const formData = new FormData();
-      
+
       const imageFile = {
         uri: imageUri,
         type: 'image/jpeg',
         name: `receipt_${Date.now()}.jpg`,
       } as any;
-      
+
       formData.append('image', imageFile);
 
       const response = await apiClient.uploadFile<{
@@ -110,7 +110,7 @@ class ReceiptService {
         thumbnailUrl: string;
         filename: string;
       }>('/receipts/images/upload', formData);
-      
+
       return {
         success: true,
         data: response
@@ -139,6 +139,9 @@ class ReceiptService {
     receiptImageUrl?: string;
     extractedData?: any;
     notes?: string;
+    kilometers?: number;
+    fuelLiters?: number;
+    fuelType?: string;
   }): Promise<{
     success: boolean;
     data?: { id: string };
@@ -146,7 +149,7 @@ class ReceiptService {
   }> {
     try {
       console.log('📝 Creating expense...', expenseData);
-      
+
       // Prepara il payload per l'API
       const payload = {
         amount: expenseData.amount,
@@ -159,16 +162,19 @@ class ReceiptService {
         receiptTime: expenseData.receiptTime,
         receiptImageUrl: expenseData.receiptImageUrl,
         extractedData: expenseData.extractedData,
-        notes: expenseData.notes
+        notes: expenseData.notes,
+        kilometers: expenseData.kilometers,
+        fuelLiters: expenseData.fuelLiters,
+        fuelType: expenseData.fuelType
       };
-      
+
       console.log('📋 Sending expense payload:', payload);
       console.log('🔗 Endpoint:', `/expense-reports/${expenseReportId}/expenses`);
-      
+
       const response = await apiClient.post<{ id: string }>(`/expense-reports/${expenseReportId}/expenses`, payload);
-      
+
       console.log('✅ Expense created:', response);
-      
+
       return {
         success: true,
         data: response
@@ -196,6 +202,9 @@ class ReceiptService {
     receiptTime: string;
     extractedData?: any;
     notes?: string;
+    kilometers?: number;
+    fuelLiters?: number;
+    fuelType?: string;
   }, imageUri?: string): Promise<{
     success: boolean;
     data?: {
@@ -217,15 +226,16 @@ class ReceiptService {
         receiptDate: expenseData.receiptDate,
         receiptTime: expenseData.receiptTime,
         hasExtractedData: !!expenseData.extractedData,
-        hasNotes: !!expenseData.notes
+        hasNotes: !!expenseData.notes,
+        kilometers: expenseData.kilometers
       });
       console.log('📷 [CREATE EXPENSE] Image URI:', imageUri || 'none');
-      
+
       // Crea FormData per multipart request
       const formData = new FormData();
-      
+
       console.log('📦 [CREATE EXPENSE] Building FormData...');
-      
+
       // Aggiungi i dati della spesa
       formData.append('amount', expenseData.amount.toString());
       formData.append('currency', expenseData.currency);
@@ -237,7 +247,10 @@ class ReceiptService {
       formData.append('receiptTime', expenseData.receiptTime);
       if (expenseData.extractedData) formData.append('extractedData', JSON.stringify(expenseData.extractedData));
       if (expenseData.notes) formData.append('notes', expenseData.notes);
-      
+      if (expenseData.kilometers) formData.append('kilometers', expenseData.kilometers.toString());
+      if (expenseData.fuelLiters) formData.append('fuelLiters', expenseData.fuelLiters.toString());
+      if (expenseData.fuelType) formData.append('fuelType', expenseData.fuelType);
+
       // Aggiungi l'immagine se presente
       if (imageUri) {
         const imageFile = {
@@ -245,39 +258,39 @@ class ReceiptService {
           type: 'image/jpeg',
           name: `receipt_${Date.now()}.jpg`,
         } as any;
-        
+
         console.log('📷 [CREATE EXPENSE] Adding image to FormData:', imageFile.name);
         formData.append('receiptImage', imageFile);
       }
-      
+
       const endpoint = `/expense-reports/${expenseReportId}/expenses/with-image`;
       console.log('🌐 [CREATE EXPENSE] Endpoint:', endpoint);
       console.log('🔐 [CREATE EXPENSE] Auth token will be added by API client interceptor');
       console.log('📤 [CREATE EXPENSE] Sending multipart/form-data request...');
-      
+
       const response = await apiClient.uploadFile<any>(endpoint, formData);
-      
+
       console.log('✅ [CREATE EXPENSE] Server response received');
       console.log('📋 [CREATE EXPENSE] Response:', JSON.stringify(response, null, 2));
-      
+
       // Il server ritorna { success, data: { id, receiptImageUrl, ... }, message }
       // Estraiamo i dati dalla struttura corretta
       const expenseId = response.data?.id || response.id;
       const imageUrl = response.data?.receiptImageUrl || response.receiptImageUrl;
       const thumbnailUrl = response.data?.receiptThumbnailUrl || response.receiptThumbnailUrl;
-      
+
       console.log('🆔 [CREATE EXPENSE] Expense ID:', expenseId);
       console.log('🖼️ [CREATE EXPENSE] Image URL:', imageUrl || 'none');
       console.log('🖼️ [CREATE EXPENSE] Thumbnail URL:', thumbnailUrl || 'none');
-      
+
       if (!expenseId) {
         console.error('⚠️ [CREATE EXPENSE] WARNING: No expense ID in response!');
         console.error('📋 [CREATE EXPENSE] Full response structure:', JSON.stringify(response, null, 2));
       }
-      
+
       console.log('✅ [CREATE EXPENSE] Expense created successfully');
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      
+
       return {
         success: true,
         data: {
@@ -291,7 +304,7 @@ class ReceiptService {
       console.error('❌ [CREATE EXPENSE] Error occurred!');
       console.error('❌ [CREATE EXPENSE] Error type:', error.constructor.name);
       console.error('❌ [CREATE EXPENSE] Error message:', error.message);
-      
+
       // Log dettagliato per debugging
       if (error.response) {
         console.error('📋 [CREATE EXPENSE] API Error Details:', {
@@ -299,7 +312,7 @@ class ReceiptService {
           statusText: error.response.statusText,
           data: error.response.data,
         });
-        
+
         if (error.response.status === 401) {
           console.error('🚫 [CREATE EXPENSE] Authentication failed - token may be invalid');
         } else if (error.response.status === 400) {
@@ -315,7 +328,7 @@ class ReceiptService {
         console.error('⚙️ [CREATE EXPENSE] Error setting up request:', error.message);
       }
       console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      
+
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred'
@@ -338,6 +351,9 @@ class ReceiptService {
     receiptImageUrl?: string;
     extractedData?: any;
     notes?: string;
+    kilometers?: number;
+    fuelLiters?: number;
+    fuelType?: string;
     archived?: boolean; // Server usa 'archived' non 'is_archived'
   }): Promise<{
     success: boolean;
@@ -364,11 +380,11 @@ class ReceiptService {
   }> {
     try {
       console.log('🗑️ Deleting expense:', expenseId);
-      
+
       await apiClient.delete(`/expenses/${expenseId}`);
-      
+
       console.log('✅ Expense deleted');
-      
+
       return { success: true };
     } catch (error: any) {
       console.error('❌ Error deleting expense:', error);
@@ -401,7 +417,7 @@ class ReceiptService {
         start_date: data.start_date,
         end_date: data.end_date
       });
-      
+
       // Prepara il payload con tutti i campi per l'API
       // Converti null/undefined in stringhe vuote per evitare errori di validazione
       const payload = {
@@ -410,30 +426,30 @@ class ReceiptService {
         start_date: data.start_date,
         end_date: data.end_date
       };
-      
+
       console.log('📦 [CREATE EXPENSE REPORT] Prepared payload:', JSON.stringify(payload, null, 2));
       console.log('🌐 [CREATE EXPENSE REPORT] Sending POST to /expense-reports');
       console.log('🔐 [CREATE EXPENSE REPORT] Auth token will be added by API client interceptor');
-      
+
       const response = await apiClient.post<any>('/expense-reports', payload);
-      
+
       console.log('✅ [CREATE EXPENSE REPORT] Server response received');
       console.log('📋 [CREATE EXPENSE REPORT] Response data:', JSON.stringify(response, null, 2));
-      
+
       // Il server ritorna { success, data: { id, ... }, message }
       // Estraiamo l'ID dalla struttura corretta
       const serverId = response.data?.id || response.id;
-      
+
       console.log('🆔 [CREATE EXPENSE REPORT] Server-generated ID:', serverId);
-      
+
       if (!serverId) {
         console.error('⚠️ [CREATE EXPENSE REPORT] WARNING: No server ID in response!');
         console.error('📋 [CREATE EXPENSE REPORT] Full response structure:', JSON.stringify(response, null, 2));
       }
-      
+
       console.log('✅ [CREATE EXPENSE REPORT] Expense report created successfully');
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      
+
       return {
         success: true,
         data: { id: serverId }
@@ -443,7 +459,7 @@ class ReceiptService {
       console.error('❌ [CREATE EXPENSE REPORT] Error occurred!');
       console.error('❌ [CREATE EXPENSE REPORT] Error type:', error.constructor.name);
       console.error('❌ [CREATE EXPENSE REPORT] Error message:', error.message);
-      
+
       // Log dettagliato dell'errore per debugging
       if (error.response) {
         console.error('📋 [CREATE EXPENSE REPORT] API Error Details:', {
@@ -452,7 +468,7 @@ class ReceiptService {
           data: error.response.data,
           headers: error.response.headers
         });
-        
+
         if (error.response.status === 401) {
           console.error('🚫 [CREATE EXPENSE REPORT] Authentication failed - token may be invalid');
         } else if (error.response.status === 400) {
@@ -467,7 +483,7 @@ class ReceiptService {
         console.error('⚙️ [CREATE EXPENSE REPORT] Error setting up request:', error.message);
       }
       console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      
+
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred'
@@ -507,11 +523,11 @@ class ReceiptService {
   }> {
     try {
       console.log('🗑️ Deleting expense report:', reportId);
-      
+
       await apiClient.delete(`/expense-reports/${reportId}`);
-      
+
       console.log('✅ Expense report deleted');
-      
+
       return { success: true };
     } catch (error: any) {
       console.error('❌ Error deleting expense report:', error);

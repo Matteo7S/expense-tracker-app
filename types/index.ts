@@ -88,6 +88,9 @@ export interface CreateExpenseData {
   subcategory?: string;
   numberOfPeople?: number;
   receiptImages?: string[];
+  kilometers?: number;
+  fuelLiters?: number;
+  fuelType?: string;
 }
 
 export interface AuthContextType {
