@@ -569,16 +569,16 @@ class SmartReceiptAnalyzer {
     ];
 
     // Pattern per kilometraggio
-    // Es: km 12345, km: 12345, 12345 km
+    // Es: km 12345, km: 12345, 12345 km, K M: 12345
     const kmPatterns = [
-      /(?:km|chilometri|kilometri)\.?\s*[:]?\s*(\d{1,6}(?:[.,]\d{1})?)/i,
-      /(\d{1,6}(?:[.,]\d{1})?)\s*(?:km|chilometri|kilometri)(?![a-z])/i
+      /(?:km|chilometri|kilometri|k\s*m)\.?\s*[:=]?\s*([\d\.,\s]+)/i,
+      /([\d\.,\s]+)\s*(?:km|chilometri|kilometri|k\s*m)(?![a-z])/i
     ];
 
     // Pattern per tipo carburante
     const fuelTypes = [
-      { type: 'Diesel', keywords: ['diesel', 'gasolio'] },
-      { type: 'Benzina', keywords: ['benzina', 'super', 'senza piombo', 'unleaded', 'green'] },
+      { type: 'Diesel', keywords: ['diesel', 'gasolio', 'b7', 'b10', 'xtl'] },
+      { type: 'Benzina', keywords: ['benzina', 'super', 'senza piombo', 'unleaded', 'green', 'benz', 'benzsp', 'e5', 'e10'] },
       { type: 'GPL', keywords: ['gpl', 'lpg'] },
       { type: 'Metano', keywords: ['metano', 'gas naturale', 'cng'] },
       { type: 'AdBlue', keywords: ['adblue', 'ad blue'] }
@@ -606,10 +606,28 @@ class SmartReceiptAnalyzer {
         for (const pattern of kmPatterns) {
           const match = line.match(pattern);
           if (match) {
-            // Rimuove eventuali punti migliaia per i km (es. 120.000)
-            // Se c'è una virgola, potrebbe essere decimale (raro per odometro, ma possibile)
-            const rawKm = match[1].replace(/\./g, '').replace(',', '.');
-            const val = parseFloat(rawKm);
+            // Clean the caught value (remove thousands separators if needed, standardise decimal)
+            // Assuming KM usually doesn't have decimals, or at most 1. 
+            // If we capture "52.855", it might be 52855 or 52.855. 
+            // Given the context of cars, > 50000 usually means no decimal for thousands.
+            let rawKm = match[1].trim();
+
+            // Remove 'k' or 'm' if included by mistake (though regex guards this)
+            rawKm = rawKm.replace(/[^0-9.,]/g, '');
+
+            // Try simple parsing first
+            let val = parseFloat(rawKm.replace(',', '.'));
+
+            // Heuristic: if value is small (< 1000) and text had dot/comma, maybe it's valid (new car?)
+            // But if it looks like coordinate or price, skip.
+
+            // Special handling for thousands separator often seen as dot in EU
+            // If raw is "52.855" -> parseFloat sees 52.855
+            // User likely means 52855. 
+            if (rawKm.includes('.') && rawKm.split('.')[1].length === 3) {
+              val = parseFloat(rawKm.replace(/\./g, ''));
+            }
+
             if (val > 0 && val < 500000) { // check range ragionevole
               km = val;
               break;
@@ -992,8 +1010,15 @@ class SmartReceiptAnalyzer {
       },
       {
         category: 'fuel',
-        keywords: ['benzina', 'diesel', 'gas', 'carburante', 'eni', 'shell', 'q8', 'agip', 'esso', 'tamoil', 'ip', 'gpl', 'metano', 'adblue', 'rifornimento', 'erogatore', 'pompa'],
-        patterns: [/(?:litri|self|service|pompa|erog)/i]
+        keywords: [
+          'benzina', 'diesel', 'gas', 'carburante', 'eni', 'enilive', 'benzsp', 'benz', 'shell', 'q8', 'agip', 'esso', 'tamoil', 'ip', 'gpl', 'metano', 'adblue',
+          'rifornimento', 'erogatore', 'pompa', 'distributore', 'stazione servizio', 'self', 'servito', 'b7', 'b10', 'xtl', 'gasolio'
+        ],
+        patterns: [
+          /(?:litri|lt|l)\.?\s*[:]?\s*\d/i, // L followed by number
+          /(?:km|chilometri)\.?\s*[:]?\s*\d/i, // KM followed by number
+          /(?:pompa|erog|erogatore|pistola)/i
+        ]
       },
       {
         category: 'transport',

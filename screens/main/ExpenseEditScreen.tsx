@@ -42,7 +42,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
   navigation
 }) => {
   const { expenseId } = route.params;
-  
+
   // Form data
   const [expense, setExpense] = useState<Expense | null>(null);
   const [amount, setAmount] = useState('');
@@ -51,23 +51,26 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
   const [merchantAddress, setMerchantAddress] = useState('');
   const [category, setCategory] = useState('');
   const [notes, setNotes] = useState('');
-  
+  const [kilometers, setKilometers] = useState('');
+  const [fuelLiters, setFuelLiters] = useState('');
+  const [fuelType, setFuelType] = useState('');
+
   // Date/Time states
   const [receiptDate, setReceiptDate] = useState(new Date());
   const [receiptTime, setReceiptTime] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  
+
   // Category picker
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
-  
+
   // Loading states
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  
+
   // Form validation
-  const [errors, setErrors] = useState<{[key: string]: string}>({});
-  
+  const [errors, setErrors] = useState<{ [key: string]: string }>({});
+
   // Categorie disponibili (server API format)
   const categories = [
     { value: 'food', label: 'Cibo e Bevande', icon: 'restaurant' },
@@ -76,7 +79,9 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
     { value: 'entertainment', label: 'Intrattenimento', icon: 'movie' },
     { value: 'shopping', label: 'Shopping', icon: 'shopping-bag' },
     { value: 'health', label: 'Salute', icon: 'local-hospital' },
+    { value: 'health', label: 'Salute', icon: 'local-hospital' },
     { value: 'business', label: 'Business', icon: 'business' },
+    { value: 'fuel', label: 'Carburante', icon: 'local-gas-station' },
     { value: 'other', label: 'Altro', icon: 'more-horiz' },
   ];
 
@@ -88,21 +93,21 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
     try {
       setIsLoading(true);
       const loadedExpense = await databaseManager.getExpenseById(expenseId);
-      
+
       if (!loadedExpense) {
         Alert.alert('Errore', 'Spesa non trovata');
         navigation.goBack();
         return;
       }
-      
+
       setExpense(loadedExpense);
-      
+
       // Debug log per vedere i dati della spesa
       console.log('📊 ExpenseEditScreen - Loaded expense data:');
       console.log('  - merchant_name:', loadedExpense.merchant_name);
       console.log('  - notes:', loadedExpense.notes);
       console.log('  - description:', loadedExpense.description);
-      
+
       // Populate form fields
       setAmount(loadedExpense.amount.toString());
       setCurrency(loadedExpense.currency);
@@ -110,16 +115,19 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
       setMerchantAddress(loadedExpense.merchant_address || '');
       setCategory(loadedExpense.category || '');
       setNotes(loadedExpense.notes || '');
-      
+      setKilometers(loadedExpense.kilometers ? loadedExpense.kilometers.toString() : '');
+      setFuelLiters(loadedExpense.fuel_liters ? loadedExpense.fuel_liters.toString() : loadedExpense.fuelLiters ? loadedExpense.fuelLiters.toString() : '');
+      setFuelType(loadedExpense.fuel_type || loadedExpense.fuelType || '');
+
       // Parse date and time
       const dateStr = loadedExpense.receipt_date;
       const timeStr = loadedExpense.receipt_time;
-      
+
       if (dateStr) {
         const date = new Date(dateStr);
         setReceiptDate(date);
       }
-      
+
       if (timeStr && dateStr) {
         // Combine date and time
         const [hours, minutes, seconds] = timeStr.split(':');
@@ -129,7 +137,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
         dateTime.setSeconds(parseInt(seconds || '0', 10));
         setReceiptTime(dateTime);
       }
-      
+
       console.log('📊 Loaded expense for editing:', loadedExpense);
     } catch (error) {
       console.error('❌ Failed to load expense:', error);
@@ -140,7 +148,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
   };
 
   const validateForm = (): boolean => {
-    const newErrors: {[key: string]: string} = {};
+    const newErrors: { [key: string]: string } = {};
 
     if (!merchantName.trim()) {
       newErrors.merchantName = 'Il nome dell\'esercente è obbligatorio';
@@ -173,18 +181,21 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
         receipt_time: receiptTime.toTimeString().split(' ')[0], // HH:MM:SS
         notes,
         sync_status: 'pending' as const,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        kilometers: kilometers ? parseFloat(kilometers) : null,
+        fuel_liters: fuelLiters ? parseFloat(fuelLiters) : null,
+        fuel_type: fuelType || null
       };
 
       await databaseManager.updateExpense(expenseId, updates);
       console.log('✅ Expense updated successfully');
-      
+
       // Trigger refresh in all listening screens
       triggerExpenseRefresh();
-      
+
       // Start sync in background
       syncManager.syncAll().catch(console.error);
-      
+
       Alert.alert(
         'Successo',
         'Spesa aggiornata con successo!',
@@ -195,7 +206,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
           }
         ]
       );
-      
+
     } catch (error) {
       console.error('❌ Failed to update expense:', error);
       Alert.alert('Errore', 'Impossibile aggiornare la spesa');
@@ -208,7 +219,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
     if (Platform.OS === 'android') {
       setShowDatePicker(false);
     }
-    
+
     if (selectedDate) {
       setReceiptDate(selectedDate);
       setErrors(prev => ({ ...prev, receiptDate: '' }));
@@ -219,7 +230,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
     if (Platform.OS === 'android') {
       setShowTimePicker(false);
     }
-    
+
     if (selectedTime) {
       setReceiptTime(selectedTime);
       setErrors(prev => ({ ...prev, receiptTime: '' }));
@@ -304,6 +315,19 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
             />
           </View>
 
+          {/* Kilometers Input - Visible for generic use or specifically for fuel/transport */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Chilometri (Km)</Text>
+            <TextInput
+              style={styles.input}
+              value={kilometers}
+              onChangeText={setKilometers}
+              placeholder="0"
+              keyboardType="numeric"
+              placeholderTextColor="#999"
+            />
+          </View>
+
           {/* Category */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Categoria</Text>
@@ -311,10 +335,10 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
               style={styles.dateTimeButton}
               onPress={() => setShowCategoryPicker(true)}
             >
-              <MaterialIcons 
-                name={categories.find(c => c.value === category)?.icon || 'category'} 
-                size={20} 
-                color="#007AFF" 
+              <MaterialIcons
+                name={categories.find(c => c.value === category)?.icon || 'category'}
+                size={20}
+                color="#007AFF"
               />
               <Text style={styles.dateTimeText}>
                 {categories.find(c => c.value === category)?.label || 'Seleziona categoria'}
@@ -479,7 +503,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
           </View>
         </Modal>
       )}
-      
+
       {/* Category Picker Modal */}
       {showCategoryPicker && (
         <Modal
@@ -508,10 +532,10 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
                       setShowCategoryPicker(false);
                     }}
                   >
-                    <MaterialIcons 
-                      name={cat.icon as any} 
-                      size={24} 
-                      color={category === cat.value ? '#007AFF' : '#666'} 
+                    <MaterialIcons
+                      name={cat.icon as any}
+                      size={24}
+                      color={category === cat.value ? '#007AFF' : '#666'}
                     />
                     <Text style={[
                       styles.categoryItemText,
