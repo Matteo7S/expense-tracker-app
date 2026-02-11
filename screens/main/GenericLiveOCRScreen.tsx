@@ -443,7 +443,10 @@ export function GenericLiveOCRScreen() {
         extracted_data: JSON.stringify(extractedDataForSaving),
         notes: smartAnalysisAccuracy > 0 ? `Precisione OCR: ${smartAnalysisAccuracy}%` : undefined,
         is_archived: false,
-        sync_status: 'pending' // Sarà sincronizzato in background
+        sync_status: 'pending', // Sarà sincronizzato in background
+        kilometers: confirmedData.kilometers,
+        fuel_liters: confirmedData.fuelLiters,
+        fuel_type: confirmedData.fuelType
       });
 
       console.log('✅ Expense saved locally:', expenseId);

@@ -116,8 +116,8 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
       setCategory(loadedExpense.category || '');
       setNotes(loadedExpense.notes || '');
       setKilometers(loadedExpense.kilometers ? loadedExpense.kilometers.toString() : '');
-      setFuelLiters(loadedExpense.fuel_liters ? loadedExpense.fuel_liters.toString() : loadedExpense.fuelLiters ? loadedExpense.fuelLiters.toString() : '');
-      setFuelType(loadedExpense.fuel_type || loadedExpense.fuelType || '');
+      setFuelLiters(loadedExpense.fuel_liters ? loadedExpense.fuel_liters.toString() : '');
+      setFuelType(loadedExpense.fuel_type || '');
 
       // Parse date and time
       const dateStr = loadedExpense.receipt_date;
@@ -182,9 +182,9 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
         notes,
         sync_status: 'pending' as const,
         updated_at: new Date().toISOString(),
-        kilometers: kilometers ? parseFloat(kilometers) : null,
-        fuel_liters: fuelLiters ? parseFloat(fuelLiters) : null,
-        fuel_type: fuelType || null
+        kilometers: kilometers ? parseFloat(kilometers) : undefined,
+        fuel_liters: fuelLiters ? parseFloat(fuelLiters) : undefined,
+        fuel_type: fuelType || undefined
       };
 
       await databaseManager.updateExpense(expenseId, updates);

@@ -19,16 +19,16 @@ class ExpenseService {
     try {
       // Da ora in poi reportId è sempre l'ID locale del database
       const localExpenses = await databaseManager.getExpensesByReportId(reportId, true);
-      
+
       // Filtra le spese in base al flag includeArchived
-      const filteredExpenses = includeArchived 
+      const filteredExpenses = includeArchived
         ? localExpenses.filter(expense => expense.is_archived) // Solo spese archiviate
         : localExpenses.filter(expense => !expense.is_archived); // Solo spese attive
-      
+
       // Converti dal formato database locale al formato API
       const apiFormatExpenses = filteredExpenses.map(expense => {
         const apiId = expense.server_id || expense.id;
-        
+
         return {
           id: apiId,
           reportId: expense.expense_report_id,
@@ -49,16 +49,16 @@ class ExpenseService {
           note: expense.notes
         };
       });
-      
+
       // Se ci sono dati locali, restituisci le spese filtrate
       if (localExpenses.length > 0) {
         return apiFormatExpenses;
       }
-      
+
       // Fallback: se non ci sono dati locali, prova il server
       // Ma solo se reportId sembra un GUID valido (server_id)
       const isGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(reportId);
-      
+
       if (isGuid) {
         const response = await apiClient.get<ApiResponse<Expense[]>>(`/expenses/report/${reportId}`);
 
@@ -68,14 +68,14 @@ class ExpenseService {
 
         throw new Error(response.error || 'Failed to fetch expenses');
       }
-      
+
       // Se reportId è un local_id e non ci sono dati locali, restituisci array vuoto
       console.log('⚠️ No local expenses found for local reportId:', reportId);
       return [];
-      
+
     } catch (error) {
       console.error('❌ Error loading expenses:', error);
-      
+
       // Se tutto fallisce, restituisci un array vuoto per evitare crash
       return [];
     }
@@ -85,7 +85,7 @@ class ExpenseService {
     try {
       // Prima prova a caricare dal database locale
       const localExpense = await databaseManager.getExpenseById(id);
-      
+
       if (localExpense) {
         // Converti dal formato database locale al formato API
         return {
@@ -108,7 +108,7 @@ class ExpenseService {
           note: localExpense.notes
         } as Expense;
       }
-      
+
       // Fallback: prova l'API del server
       const response = await apiClient.get<ApiResponse<Expense>>(`/expenses/${id}`);
 
@@ -117,7 +117,7 @@ class ExpenseService {
       }
 
       throw new Error(response.error || 'Failed to fetch expense');
-      
+
     } catch (error) {
       console.error('❌ Error loading expense:', error);
       throw new Error('Impossibile caricare i dettagli della spesa');
@@ -133,7 +133,7 @@ class ExpenseService {
       console.log('📋 [CREATE EXPENSE] amount:', data.amount);
       console.log('📋 [CREATE EXPENSE] category:', data.category);
       console.log('📋 [CREATE EXPENSE] description:', data.description);
-      
+
       // Verifica lo stato del report parent
       try {
         const parentReport = await databaseManager.getExpenseReportById(data.reportId);
@@ -143,7 +143,7 @@ class ExpenseService {
           title: parentReport?.title,
           sync_status: parentReport?.sync_status
         });
-        
+
         if (!parentReport) {
           console.error('❌ [CREATE EXPENSE] Parent report NOT FOUND!');
         } else if (!parentReport.server_id) {
@@ -152,14 +152,14 @@ class ExpenseService {
       } catch (reportError) {
         console.error('❌ [CREATE EXPENSE] Error checking parent report:', reportError);
       }
-      
+
       // Auto-determine subcategory for food based on time
       let subcategory = data.subcategory;
       if (data.category === ExpenseCategory.FOOD && !subcategory) {
         subcategory = this.determineFoodSubcategory();
         console.log('🍽️ [CREATE EXPENSE] Auto-determined food subcategory:', subcategory);
       }
-      
+
       // ✅ SALVARE PRIMA NEL DATABASE LOCALE
       console.log('💾 [CREATE EXPENSE] Saving to local database...');
       const expenseData = {
@@ -172,19 +172,22 @@ class ExpenseService {
         receipt_time: new Date().toTimeString().split(' ')[0], // Ora corrente
         notes: data.description,
         receipt_image_path: data.receiptImages && data.receiptImages.length > 0 ? data.receiptImages[0] : undefined,
+        kilometers: data.kilometers,
+        fuel_liters: data.fuelLiters,
+        fuel_type: data.fuelType,
         is_archived: false,
-        sync_status: 'pending'
+        sync_status: 'pending' as const
       };
       console.log('💾 [CREATE EXPENSE] Expense data to save:', JSON.stringify(expenseData, null, 2));
-      
+
       const localExpenseId = await databaseManager.createExpense(expenseData);
-      
+
       console.log('✅ [CREATE EXPENSE] Expense saved locally with ID:', localExpenseId);
-      
+
       // Verifica che la spesa sia stata aggiunta alla sync queue
       try {
         const syncQueue = await databaseManager.getSyncQueue();
-        const expenseInQueue = syncQueue.find(item => 
+        const expenseInQueue = syncQueue.find(item =>
           item.table_name === 'expenses' && item.record_id === localExpenseId
         );
         console.log('🔄 [CREATE EXPENSE] Sync queue status:', {
@@ -200,22 +203,22 @@ class ExpenseService {
       } catch (queueError) {
         console.error('❌ [CREATE EXPENSE] Error checking sync queue:', queueError);
       }
-      
+
       // ✅ TRIGGER REFRESH PER AGGIORNARE UI
       console.log('🔄 [CREATE EXPENSE] Triggering UI refresh...');
       triggerExpenseRefresh();
-      
+
       // ✅ RESTITUIRE DATO LOCALE CONVERTITO IN FORMATO API
       console.log('📤 [CREATE EXPENSE] Converting to API format...');
       const createdExpense = await this.getExpense(localExpenseId);
       console.log('📤 [CREATE EXPENSE] Created expense (API format):', JSON.stringify(createdExpense, null, 2));
-      
+
       console.log('📤 [CREATE EXPENSE] Expense will be synced to server in background by sync manager');
       console.log('✅ [CREATE EXPENSE] Creation process completed successfully');
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      
+
       return createdExpense;
-      
+
     } catch (error) {
       console.error('❌ Error creating expense locally:', error);
       throw new Error('Failed to create expense locally');
@@ -229,7 +232,7 @@ class ExpenseService {
         try {
           await databaseManager.updateExpenseArchiveStatus(id, data.isArchived);
           console.log(`✅ Expense ${id} archive status updated locally`);
-          
+
           // Ritorna la spesa aggiornata
           const updatedExpense = await this.getExpense(id);
           return updatedExpense;
@@ -238,7 +241,7 @@ class ExpenseService {
           throw new Error('Failed to archive expense');
         }
       }
-      
+
       // Per altri aggiornamenti, prova prima localmente poi il server
       try {
         // Prova prima a aggiornare localmente se la spesa esiste
@@ -246,7 +249,7 @@ class ExpenseService {
         if (localExpense) {
           // Converte i dati dall'API format al database format
           const databaseUpdates: Partial<any> = {};
-          
+
           if (data.amount !== undefined) databaseUpdates.amount = data.amount;
           if (data.description !== undefined) {
             // La description nell'API corrisponde alle note nel database
@@ -263,14 +266,17 @@ class ExpenseService {
           if (data.receiptImages && data.receiptImages.length > 0) {
             databaseUpdates.receipt_image_path = data.receiptImages[0];
           }
-          
+          if (data.kilometers !== undefined) databaseUpdates.kilometers = data.kilometers;
+          if (data.fuelLiters !== undefined) databaseUpdates.fuel_liters = data.fuelLiters;
+          if (data.fuelType !== undefined) databaseUpdates.fuel_type = data.fuelType;
+
           // Aggiorna nel database locale
           await databaseManager.updateExpense(id, databaseUpdates);
           console.log(`✅ Expense ${id} updated locally`);
-          
+
           // Trigger refresh
           triggerExpenseRefresh();
-          
+
           // Ritorna la spesa aggiornata
           const updatedExpense = await this.getExpense(id);
           return updatedExpense;
@@ -278,7 +284,7 @@ class ExpenseService {
       } catch (localError) {
         // Fallback al server se aggiornamento locale fallisce
       }
-      
+
       // Fallback al server per aggiornamenti non-archivio
       const response = await apiClient.put<ApiResponse<Expense>>(`/expenses/${id}`, data);
 
@@ -287,7 +293,7 @@ class ExpenseService {
       }
 
       throw new Error(response.error || 'Failed to update expense');
-      
+
     } catch (error) {
       console.error('❌ Error updating expense:', error);
       throw error;
@@ -297,7 +303,7 @@ class ExpenseService {
   async deleteExpense(id: string): Promise<void> {
     try {
       console.log(`🗑️ Attempting to delete expense ${id}...`);
-      
+
       // Prima prova a eliminare dal database locale
       try {
         await databaseManager.deleteExpense(id);
@@ -306,14 +312,14 @@ class ExpenseService {
       } catch (localError) {
         // Se non esiste localmente, prova a eliminare dal server
         const response = await apiClient.delete<ApiResponse<void>>(`/expenses/${id}`);
-        
+
         if (response.success) {
           return;
         } else {
           throw new Error(response.error || 'Failed to delete expense from server');
         }
       }
-      
+
     } catch (error) {
       console.error('❌ Error deleting expense:', error);
       throw new Error('Failed to delete expense');
@@ -322,11 +328,11 @@ class ExpenseService {
 
   async uploadReceiptImages(expenseId: string, imageUris: string[]): Promise<string[]> {
     const formData = new FormData();
-    
+
     for (let i = 0; i < imageUris.length; i++) {
       const uri = imageUris[i];
       const filename = `receipt_${Date.now()}_${i}.jpg`;
-      
+
       formData.append('receipts', {
         uri,
         type: 'image/jpeg',
@@ -349,13 +355,13 @@ class ExpenseService {
   async analyzeReceipt(reportId: string, imageUri: string): Promise<ReceiptAnalysisResponse> {
     const formData = new FormData();
     const filename = `receipt_analysis_${Date.now()}.jpg`;
-    
+
     formData.append('receipt', {
       uri: imageUri,
       type: 'image/jpeg',
       name: filename,
     } as any);
-    
+
     formData.append('reportId', reportId);
 
     const response = await apiClient.uploadFile<ApiResponse<ReceiptAnalysisResponse>>(
@@ -384,7 +390,7 @@ class ExpenseService {
 
   private determineFoodSubcategory(): string {
     const hour = new Date().getHours();
-    
+
     if (hour >= 5 && hour < 11) {
       return FoodSubcategory.BREAKFAST;
     } else if (hour >= 11 && hour < 16) {
@@ -399,16 +405,16 @@ class ExpenseService {
   async getArchivedExpenses(): Promise<Expense[]> {
     try {
       console.log(`📦 Loading all archived expenses from local database...`);
-      
+
       // Ottieni tutte le spese archiviate da tutti i report
       const archivedExpenses = await databaseManager.getAllArchivedExpenses();
-      
+
       console.log(`📦 Found ${archivedExpenses.length} archived expenses`);
-      
+
       // Converti dal formato database locale al formato API
       const apiFormatExpenses = archivedExpenses.map(expense => {
         const apiId = expense.server_id || expense.id;
-        
+
         return {
           id: apiId,
           reportId: expense.expense_report_id,
@@ -429,9 +435,9 @@ class ExpenseService {
           note: expense.notes
         } as Expense;
       });
-      
+
       return apiFormatExpenses;
-      
+
     } catch (error) {
       console.error('❌ Error loading archived expenses:', error);
       return [];
