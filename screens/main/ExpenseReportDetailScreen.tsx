@@ -103,7 +103,10 @@ function ExpenseItem({ expense, onPress, onDelete }: ExpenseItemProps) {
             {expense.date ? new Date(expense.date).toLocaleDateString('it-IT') : new Date(expense.createdAt).toLocaleDateString('it-IT')}
           </Text>
         </View>
-        <Text style={styles.expenseAmount}>€{expense.amount.toFixed(2)}</Text>
+        <Text style={styles.expenseAmount}>
+          {expense.currency === 'GBP' ? '£' : expense.currency === 'USD' ? '$' : expense.currency === 'CHF' ? 'CHF' : '€'}
+          {expense.amount.toFixed(2)}
+        </Text>
       </TouchableOpacity>
       <TouchableOpacity style={styles.deleteExpenseButton} onPress={handleDeletePress}>
         <MaterialIcons name="delete" size={20} color="#ff4444" />
@@ -129,7 +132,7 @@ export function ExpenseReportDetailScreen() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedExpenses, setSelectedExpenses] = useState<Set<string>>(new Set());
   const [showTransferModal, setShowTransferModal] = useState(false);
-  
+
   // Filter states
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [activeFilter, setActiveFilter] = useState<string>('previous_month');
@@ -147,7 +150,7 @@ export function ExpenseReportDetailScreen() {
   const getDateRange = (filter: string): { from: Date; to: Date } | null => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
+
     switch (filter) {
       case 'current_month': {
         const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -193,16 +196,16 @@ export function ExpenseReportDetailScreen() {
     try {
       // Prima carica i dati della nota spese per vedere se è archiviata
       const reportData = await expenseReportService.getExpenseReport(reportId);
-      
+
       // Controlla se la nota spese è archiviata dal database locale
       const localReport = await databaseManager.getExpenseReportById(reportId);
       const isReportArchived = localReport?.is_archived || false;
-      
+
       console.log(`📋 Report ${reportId} archived status: ${isReportArchived}`);
-      
+
       // Carica le spese appropriate (archiviate se la nota è archiviata, attive altrimenti)
       const expensesData = await expenseService.getExpenses(reportId, isReportArchived);
-      
+
       setReport(reportData);
       setAllExpenses(expensesData);
       // Apply default filter (previous month)
@@ -277,21 +280,21 @@ export function ExpenseReportDetailScreen() {
       Alert.alert('Attenzione', 'Seleziona entrambe le date per il filtro personalizzato');
       return;
     }
-    
+
     setCustomDateFrom(tempCustomDateFrom);
     setCustomDateTo(tempCustomDateTo);
-    
+
     const dateRange = {
       from: new Date(tempCustomDateFrom),
       to: new Date(tempCustomDateTo)
     };
     dateRange.to.setHours(23, 59, 59);
-    
+
     const filteredExpenses = allExpenses.filter(expense => {
       const expenseDate = expense.date ? new Date(expense.date) : new Date(expense.createdAt);
       return expenseDate >= dateRange.from && expenseDate <= dateRange.to;
     });
-    
+
     setExpenses(filteredExpenses);
     setActiveFilter('custom');
     setShowFilterModal(false);
@@ -320,7 +323,7 @@ export function ExpenseReportDetailScreen() {
   const handleDeleteExpense = async (expenseId: string) => {
     console.log('🗑️ Archive expense pressed for ID:', expenseId);
     console.log('📱 Showing CustomAlert for expense archiving...');
-    
+
     setDeleteExpenseAlert({
       visible: true,
       expenseId: expenseId,
@@ -332,7 +335,7 @@ export function ExpenseReportDetailScreen() {
 
     try {
       console.log('🗑️ User confirmed expense archiving. Archiving expense...', deleteExpenseAlert.expenseId);
-      
+
       // Verifica lo stato prima dell'archiviazione
       const expenseBefore = await databaseManager.getExpenseById(deleteExpenseAlert.expenseId);
       console.log('📊 [ARCHIVE] Expense before archiving:', {
@@ -341,12 +344,12 @@ export function ExpenseReportDetailScreen() {
         is_archived: expenseBefore?.is_archived,
         amount: expenseBefore?.amount
       });
-      
+
       // Usa soft delete (archive) invece di hard delete
       await expenseService.updateExpense(deleteExpenseAlert.expenseId, {
         isArchived: true
       });
-      
+
       // Verifica lo stato dopo l'archiviazione
       const expenseAfter = await databaseManager.getExpenseById(deleteExpenseAlert.expenseId);
       console.log('📊 [ARCHIVE] Expense after archiving:', {
@@ -356,15 +359,15 @@ export function ExpenseReportDetailScreen() {
         amount: expenseAfter?.amount,
         sync_status: expenseAfter?.sync_status
       });
-      
+
       // Verifica se è nella sync queue
       const syncQueue = await databaseManager.getSyncQueue();
-      const inQueue = syncQueue.find(item => 
-        item.table_name === 'expenses' && 
+      const inQueue = syncQueue.find(item =>
+        item.table_name === 'expenses' &&
         item.record_id === (expenseAfter?.id || deleteExpenseAlert.expenseId)
       );
       console.log('📊 [ARCHIVE] In sync queue:', inQueue ? `Yes - Action: ${inQueue.action}` : 'No');
-      
+
       setExpenses(prev => prev.filter(expense => expense.id !== deleteExpenseAlert.expenseId));
       // Ricarica i dati del report per aggiornare il totale
       await loadReportData();
@@ -444,21 +447,21 @@ export function ExpenseReportDetailScreen() {
           onPress: async () => {
             try {
               const selectedIds = Array.from(selectedExpenses);
-              
+
               // Archive all selected expenses
               for (const expenseId of selectedIds) {
                 await expenseService.updateExpense(expenseId, {
                   isArchived: true
                 });
               }
-              
+
               console.log(`✅ Archived ${selectedIds.length} expenses`);
-              
+
               // Reset selection and reload data
               setSelectionMode(false);
               setSelectedExpenses(new Set());
               await loadReportData();
-              
+
             } catch (error) {
               console.error('❌ Failed to archive expenses:', error);
               Alert.alert('Errore', 'Impossibile archiviare le spese selezionate');
@@ -486,7 +489,7 @@ export function ExpenseReportDetailScreen() {
 
   const handleArchiveExpenseConfirm = async () => {
     if (!selectedExpenseIdForArchive) return;
-    
+
     try {
       await expenseService.updateExpense(selectedExpenseIdForArchive, {
         isArchived: true
@@ -540,7 +543,7 @@ export function ExpenseReportDetailScreen() {
     const now = new Date();
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-    
+
     return allExpenses
       .filter(expense => {
         const expenseDate = expense.date ? new Date(expense.date) : new Date(expense.createdAt);
@@ -553,7 +556,7 @@ export function ExpenseReportDetailScreen() {
     const now = new Date();
     const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const lastDay = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
-    
+
     return allExpenses
       .filter(expense => {
         const expenseDate = expense.date ? new Date(expense.date) : new Date(expense.createdAt);
@@ -602,13 +605,13 @@ export function ExpenseReportDetailScreen() {
               </Text>
             )}
             <Text style={styles.monthTotal}>
-              Totale {currentMonthName}: €{currentMonthTotal.toFixed(2)}
+              Totale {currentMonthName}: €{currentMonthTotal.toFixed(2)} {/* TODO: handle multi-currency totals */}
             </Text>
             <Text style={styles.monthTotal}>
-              Totale {previousMonthName}: €{previousMonthTotal.toFixed(2)}
+              Totale {previousMonthName}: €{previousMonthTotal.toFixed(2)} {/* TODO: handle multi-currency totals */}
             </Text>
             <Text style={styles.reportTotal}>
-              Totale: €{filteredTotal.toFixed(2)}
+              Totale: €{filteredTotal.toFixed(2)} {/* TODO: handle multi-currency totals */}
             </Text>
           </View>
           <TouchableOpacity style={styles.editButton} onPress={handleEditReport}>
@@ -644,7 +647,7 @@ export function ExpenseReportDetailScreen() {
                     {getMonthName(0).charAt(0).toUpperCase() + getMonthName(0).slice(1)}
                   </Text>
                 </TouchableOpacity>
-                
+
                 <TouchableOpacity
                   style={[styles.quickFilterButton, activeFilter === 'previous_month' && styles.quickFilterButtonActive]}
                   onPress={() => applyFilter('previous_month')}
@@ -653,30 +656,30 @@ export function ExpenseReportDetailScreen() {
                     {getMonthName(-1).charAt(0).toUpperCase() + getMonthName(-1).slice(1)}
                   </Text>
                 </TouchableOpacity>
-                
+
                 <TouchableOpacity
                   style={[styles.quickFilterButton, activeFilter === 'custom' && styles.quickFilterButtonActive]}
                   onPress={handleFilterPress}
                 >
-                  <MaterialIcons 
-                    name="filter-list" 
-                    size={18} 
-                    color={activeFilter === 'custom' ? "#FF9500" : "#007AFF"} 
+                  <MaterialIcons
+                    name="filter-list"
+                    size={18}
+                    color={activeFilter === 'custom' ? "#FF9500" : "#007AFF"}
                   />
                   <Text style={[styles.quickFilterButtonText, activeFilter === 'custom' && styles.quickFilterButtonTextActive]}>
                     Filtro
                   </Text>
                 </TouchableOpacity>
-                
+
                 {expenses.length > 0 && (
                   <TouchableOpacity
                     style={styles.selectionButton}
                     onPress={handleToggleSelectionMode}
                   >
-                    <MaterialIcons 
-                      name={selectionMode ? "close" : "checklist"} 
-                      size={20} 
-                      color="#007AFF" 
+                    <MaterialIcons
+                      name={selectionMode ? "close" : "checklist"}
+                      size={20}
+                      color="#007AFF"
                     />
                     <Text style={styles.selectionButtonText}>
                       {selectionMode ? 'Annulla' : 'Seleziona'}
@@ -695,21 +698,21 @@ export function ExpenseReportDetailScreen() {
                   style={styles.selectAllButton}
                   onPress={handleSelectAll}
                 >
-                  <MaterialIcons 
-                    name={selectedExpenses.size === expenses.length ? "check-box" : "check-box-outline-blank"} 
-                    size={20} 
-                    color="#007AFF" 
+                  <MaterialIcons
+                    name={selectedExpenses.size === expenses.length ? "check-box" : "check-box-outline-blank"}
+                    size={20}
+                    color="#007AFF"
                   />
                   <Text style={styles.selectAllText}>
                     {selectedExpenses.size === expenses.length ? 'Deseleziona tutto' : 'Seleziona tutto'}
                   </Text>
                 </TouchableOpacity>
-                
+
                 <Text style={styles.selectedCountText}>
                   {selectedExpenses.size} di {expenses.length} selezionate
                 </Text>
               </View>
-              
+
               {selectedExpenses.size > 0 && (
                 <View style={styles.actionButtonsRow}>
                   <TouchableOpacity
@@ -749,7 +752,7 @@ export function ExpenseReportDetailScreen() {
           )}
         </View>
       </ScrollView>
-      
+
       <CustomAlert
         visible={deleteExpenseAlert.visible}
         title="Archivia Spesa"
@@ -799,7 +802,7 @@ export function ExpenseReportDetailScreen() {
             {/* Predefined filters */}
             <View style={styles.filterGroup}>
               <Text style={styles.filterGroupTitle}>Filtri Rapidi</Text>
-              
+
               <TouchableOpacity
                 style={[styles.filterOption, activeFilter === 'current_month' && styles.filterOptionActive]}
                 onPress={() => applyFilter('current_month')}
@@ -856,7 +859,7 @@ export function ExpenseReportDetailScreen() {
             {/* Custom date range */}
             <View style={styles.filterGroup}>
               <Text style={styles.filterGroupTitle}>Periodo Personalizzato</Text>
-              
+
               <View style={styles.customDateRow}>
                 <Text style={styles.customDateLabel}>Da:</Text>
                 <TouchableOpacity
@@ -869,7 +872,7 @@ export function ExpenseReportDetailScreen() {
                   <MaterialIcons name="calendar-today" size={20} color="#007AFF" />
                 </TouchableOpacity>
               </View>
-              
+
               {showDateFromPicker && (
                 <View style={styles.datePickerSpinnerContainer}>
                   <DateTimePicker
@@ -906,7 +909,7 @@ export function ExpenseReportDetailScreen() {
                   <MaterialIcons name="calendar-today" size={20} color="#007AFF" />
                 </TouchableOpacity>
               </View>
-              
+
               {showDateToPicker && (
                 <View style={styles.datePickerSpinnerContainer}>
                   <DateTimePicker

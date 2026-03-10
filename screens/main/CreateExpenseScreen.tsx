@@ -83,7 +83,7 @@ const CATEGORIES: CategoryOption[] = [
 export function CreateExpenseScreen() {
   const navigation = useNavigation<CreateExpenseScreenNavigationProp>();
   const route = useRoute<CreateExpenseScreenRouteProp>();
-  
+
   const isEdit = route.name === 'EditExpense';
   const reportId = 'reportId' in route.params ? route.params.reportId : '';
   const expenseId = 'expenseId' in route.params ? route.params.expenseId : '';
@@ -101,7 +101,7 @@ export function CreateExpenseScreen() {
   const [amountText, setAmountText] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingExpense, setLoadingExpense] = useState(false);
-  const [errors, setErrors] = useState<{[key: string]: string}>({});
+  const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [subcategories, setSubcategories] = useState<string[]>([]);
   const [showSubcategoryModal, setShowSubcategoryModal] = useState(false);
@@ -116,7 +116,7 @@ export function CreateExpenseScreen() {
     // Aggiorna le sottocategorie quando cambia la categoria
     const newSubcategories = expenseService.getSubcategoriesForCategory(formData.category);
     setSubcategories(newSubcategories);
-    
+
     // Reset subcategory se non è valida per la nuova categoria
     if (formData.subcategory && !newSubcategories.includes(formData.subcategory)) {
       setFormData(prev => ({ ...prev, subcategory: '' }));
@@ -146,7 +146,7 @@ export function CreateExpenseScreen() {
   };
 
   const validateForm = (): boolean => {
-    const newErrors: {[key: string]: string} = {};
+    const newErrors: { [key: string]: string } = {};
 
     if (!formData.description.trim()) {
       newErrors.description = 'Il nome dell\'esercente è obbligatorio';
@@ -171,7 +171,7 @@ export function CreateExpenseScreen() {
 
     try {
       setLoading(true);
-      
+
       if (isEdit && expenseId) {
         await expenseService.updateExpense(expenseId, formData);
         Alert.alert('Successo', 'Spesa aggiornata con successo');
@@ -179,11 +179,11 @@ export function CreateExpenseScreen() {
         await expenseService.createExpense(formData);
         Alert.alert('Successo', 'Spesa creata con successo');
       }
-      
+
       navigation.goBack();
     } catch (error: any) {
-      const errorMessage = isEdit 
-        ? 'Impossibile aggiornare la spesa' 
+      const errorMessage = isEdit
+        ? 'Impossibile aggiornare la spesa'
         : 'Impossibile creare la spesa';
       Alert.alert('Errore', errorMessage);
       console.error('Error saving expense:', error);
@@ -275,7 +275,7 @@ export function CreateExpenseScreen() {
 
           {/* Importo */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Importo (€) *</Text>
+            <Text style={styles.label}>Importo *</Text>
             <TextInput
               style={[styles.input, errors.amount && styles.inputError]}
               value={amountText}
@@ -313,7 +313,7 @@ export function CreateExpenseScreen() {
                 onPress={() => setShowSubcategoryModal(true)}
               >
                 <Text style={[styles.subcategorySelectorText, !formData.subcategory && styles.placeholderText]}>
-                  {formData.subcategory 
+                  {formData.subcategory
                     ? formData.subcategory.charAt(0).toUpperCase() + formData.subcategory.slice(1)
                     : 'Seleziona sottocategoria'
                   }

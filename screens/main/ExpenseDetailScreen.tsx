@@ -174,7 +174,10 @@ export function ExpenseDetailScreen() {
           </View>
           <View style={styles.expenseInfo}>
             <Text style={styles.expenseDescription}>{expense.merchant || expense.description}</Text>
-            <Text style={styles.expenseAmount}>€{expense.amount.toFixed(2)}</Text>
+            <Text style={styles.expenseAmount}>
+              {expense.currency === 'GBP' ? '£' : expense.currency === 'USD' ? '$' : expense.currency === 'CHF' ? 'CHF' : '€'}
+              {expense.amount.toFixed(2)}
+            </Text>
           </View>
         </View>
 
@@ -216,8 +219,8 @@ export function ExpenseDetailScreen() {
             <View style={styles.detailItem}>
               <MaterialIcons name="psychology" size={20} color="#666" />
               <Text style={styles.detailLabel}>Confidenza AI</Text>
-              <Text style={[styles.detailValue, { 
-                color: expense.aiConfidence > 0.8 ? '#4CAF50' : expense.aiConfidence > 0.6 ? '#FF9800' : '#F44336' 
+              <Text style={[styles.detailValue, {
+                color: expense.aiConfidence > 0.8 ? '#4CAF50' : expense.aiConfidence > 0.6 ? '#FF9800' : '#F44336'
               }]}>
                 {Math.round(expense.aiConfidence * 100)}%
               </Text>
@@ -321,7 +324,7 @@ export function ExpenseDetailScreen() {
               {expense.receipts && expense.receipts.length > 0 ? (
                 expense.receipts.map((receipt, index) => (
                   <View key={receipt.id} style={styles.receiptCard}>
-                    <TouchableOpacity 
+                    <TouchableOpacity
                       style={styles.receiptImageContainer}
                       onPress={() => Linking.openURL(receipt.imageUrl)}
                     >
@@ -338,7 +341,7 @@ export function ExpenseDetailScreen() {
                           year: 'numeric',
                         })}
                       </Text>
-                      <TouchableOpacity 
+                      <TouchableOpacity
                         style={styles.openLinkButton}
                         onPress={() => Linking.openURL(receipt.imageUrl)}
                       >
@@ -350,8 +353,8 @@ export function ExpenseDetailScreen() {
                 ))
               ) : (
                 expense.receiptImages?.map((imageUrl, index) => (
-                  <TouchableOpacity 
-                    key={index} 
+                  <TouchableOpacity
+                    key={index}
                     style={styles.receiptImageContainer}
                     onPress={() => Linking.openURL(imageUrl)}
                   >

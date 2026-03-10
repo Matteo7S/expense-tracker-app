@@ -56,15 +56,15 @@ export const ExpenseListScreen: React.FC<ExpenseListScreenProps> = ({
   const loadExpenses = async () => {
     try {
       setIsLoading(true);
-      
+
       const loadedExpenses = await databaseManager.getExpensesByReportId(
         expenseReportId,
         showArchived
       );
-      
+
       setExpenses(loadedExpenses);
       console.log(`📊 Loaded ${loadedExpenses.length} expenses`);
-      
+
     } catch (error) {
       console.error('❌ Failed to load expenses:', error);
       Alert.alert('Errore', 'Impossibile caricare le spese');
@@ -78,18 +78,18 @@ export const ExpenseListScreen: React.FC<ExpenseListScreenProps> = ({
    */
   const onRefresh = async () => {
     setIsRefreshing(true);
-    
+
     try {
       // Prima ricarica dati locali
       await loadExpenses();
-      
+
       // Poi tenta sincronizzazione se online
       if (networkState.isConnected && networkState.isInternetReachable) {
         await syncManager.forceSyncNow();
         // Ricarica ancora per vedere eventuali aggiornamenti
         await loadExpenses();
       }
-      
+
     } catch (error) {
       console.error('❌ Refresh failed:', error);
       Alert.alert('Errore', 'Errore durante l\'aggiornamento');
@@ -104,21 +104,21 @@ export const ExpenseListScreen: React.FC<ExpenseListScreenProps> = ({
   const toggleArchiveExpense = async (expense: Expense) => {
     try {
       const newArchivedStatus = !expense.is_archived;
-      
+
       await databaseManager.updateExpense(expense.id, {
         is_archived: newArchivedStatus,
         sync_status: 'pending',
         updated_at: new Date().toISOString()
       });
-      
+
       console.log(`📝 Expense ${expense.id} ${newArchivedStatus ? 'archived' : 'restored'}`);
-      
+
       // Ricarica la lista
       await loadExpenses();
-      
+
       // Avvia sync in background
       syncManager.syncAll().catch(console.error);
-      
+
     } catch (error) {
       console.error('❌ Failed to toggle archive:', error);
       Alert.alert('Errore', 'Impossibile modificare la spesa');
@@ -131,7 +131,7 @@ export const ExpenseListScreen: React.FC<ExpenseListScreenProps> = ({
   const deleteExpense = async (expense: Expense) => {
     Alert.alert(
       'Conferma eliminazione',
-      `Eliminare definitivamente la spesa di ${expense.amount}€?`,
+      `Eliminare definitivamente la spesa di ${expense.currency === 'GBP' ? '£' : expense.currency === 'USD' ? '$' : expense.currency === 'CHF' ? 'CHF' : '€'}${expense.amount}?`,
       [
         { text: 'Annulla', style: 'cancel' },
         {
@@ -141,13 +141,13 @@ export const ExpenseListScreen: React.FC<ExpenseListScreenProps> = ({
             try {
               await databaseManager.deleteExpense(expense.id);
               console.log(`🗑️ Expense ${expense.id} deleted`);
-              
+
               // Ricarica la lista
               await loadExpenses();
-              
+
               // Avvia sync in background
               syncManager.syncAll().catch(console.error);
-              
+
             } catch (error) {
               console.error('❌ Failed to delete expense:', error);
               Alert.alert('Errore', 'Impossibile eliminare la spesa');
@@ -187,11 +187,11 @@ export const ExpenseListScreen: React.FC<ExpenseListScreenProps> = ({
             <Text style={styles.amount}>
               {item.amount.toFixed(2)} {item.currency}
             </Text>
-            <View 
+            <View
               style={[
-                styles.syncIndicator, 
+                styles.syncIndicator,
                 { backgroundColor: getSyncStatusColor() }
-              ]} 
+              ]}
             />
           </View>
         </View>
@@ -217,7 +217,7 @@ export const ExpenseListScreen: React.FC<ExpenseListScreenProps> = ({
                 {item.is_archived ? '📤' : '📥'}
               </Text>
             </TouchableOpacity>
-            
+
             <TouchableOpacity
               onPress={() => deleteExpense(item)}
               style={styles.actionButton}
@@ -252,7 +252,7 @@ export const ExpenseListScreen: React.FC<ExpenseListScreenProps> = ({
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#f8f9fa" />
-      
+
       {/* Header con status di sincronizzazione */}
       <View style={styles.header}>
         <Text style={styles.title}>Spese</Text>
