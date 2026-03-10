@@ -113,10 +113,10 @@ export function SwipeableExpenseItem({
     },
     onEnd: (event) => {
       if (selectionMode) return; // Disable swipe in selection mode
-      
+
       const velocity = event.velocityX;
       const translation = event.translationX;
-      
+
       if (translation < -SWIPE_THRESHOLD || velocity < -500) {
         // Swipe left - show delete button
         translateX.value = withSpring(-120);
@@ -149,15 +149,15 @@ export function SwipeableExpenseItem({
       {/* Background actions - Left side (Modifica/Trasferisci) */}
       <View style={styles.leftActionsBackground}>
         <View style={styles.actionButtonsContainer}>
-          <TouchableOpacity 
-            style={styles.editAction} 
+          <TouchableOpacity
+            style={styles.editAction}
             onPress={() => handleSwipeAction(onEdit)}
           >
             <MaterialIcons name="edit" size={20} color="white" />
             <Text style={styles.actionText}>Modifica</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.transferAction} 
+          <TouchableOpacity
+            style={styles.transferAction}
             onPress={() => handleSwipeAction(onMove)}
           >
             <MaterialIcons name={moveLabel === 'Ripristina' ? "restore" : "swap-horiz"} size={20} color="white" />
@@ -165,18 +165,18 @@ export function SwipeableExpenseItem({
           </TouchableOpacity>
         </View>
       </View>
-      
+
       {/* Background actions - Right side (Elimina/Archivia) */}
       <View style={styles.rightActionsBackground}>
-        <TouchableOpacity 
-          style={styles.deleteAction} 
+        <TouchableOpacity
+          style={styles.deleteAction}
           onPress={() => handleSwipeAction(() => showDeleteAlert())}
         >
           <MaterialIcons name={useArchiveInsteadOfDelete ? "archive" : "delete"} size={20} color="white" />
           <Text style={styles.actionText}>{useArchiveInsteadOfDelete ? 'Archivia' : 'Elimina'}</Text>
         </TouchableOpacity>
       </View>
-      
+
       {/* Main content */}
       <PanGestureHandler onGestureEvent={gestureHandler} enabled={!selectionMode}>
         <Animated.View style={[styles.expenseItem, animatedStyle]}>
@@ -184,19 +184,19 @@ export function SwipeableExpenseItem({
             {/* Selection checkbox */}
             {selectionMode && (
               <TouchableOpacity style={styles.checkbox} onPress={onSelect}>
-                <MaterialIcons 
-                  name={isSelected ? "check-box" : "check-box-outline-blank"} 
-                  size={24} 
-                  color={isSelected ? "#007AFF" : "#ccc"} 
+                <MaterialIcons
+                  name={isSelected ? "check-box" : "check-box-outline-blank"}
+                  size={24}
+                  color={isSelected ? "#007AFF" : "#ccc"}
                 />
               </TouchableOpacity>
             )}
-            
+
             {/* Category icon */}
             <View style={[styles.categoryIcon, { backgroundColor: getCategoryColor(expense.category) }]}>
               <MaterialIcons name={getCategoryIcon(expense.category) as any} size={24} color="white" />
             </View>
-            
+
             {/* Expense info */}
             <View style={styles.expenseInfo}>
               <Text style={styles.expenseDescription}>
@@ -215,9 +215,12 @@ export function SwipeableExpenseItem({
                 {expense.date ? new Date(expense.date).toLocaleDateString('it-IT') : new Date(expense.createdAt).toLocaleDateString('it-IT')}
               </Text>
             </View>
-            
+
             {/* Amount */}
-            <Text style={styles.expenseAmount}>€{expense.amount.toFixed(2)}</Text>
+            <Text style={styles.expenseAmount}>
+              {expense.currency === 'GBP' ? '£' : expense.currency === 'USD' ? '$' : expense.currency === 'CHF' ? 'CHF ' : '€'}
+              {expense.amount.toFixed(2)}
+            </Text>
           </TouchableOpacity>
         </Animated.View>
       </PanGestureHandler>

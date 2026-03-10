@@ -26,7 +26,7 @@ class ExpenseService {
         : localExpenses.filter(expense => !expense.is_archived); // Solo spese attive
 
       // Converti dal formato database locale al formato API
-      const apiFormatExpenses = filteredExpenses.map(expense => {
+      let apiFormatExpenses = filteredExpenses.map(expense => {
         const apiId = expense.server_id || expense.id;
 
         return {
@@ -34,14 +34,13 @@ class ExpenseService {
           reportId: expense.expense_report_id,
           description: expense.notes || expense.merchant_name || 'Spesa senza descrizione',
           amount: expense.amount,
-          currency: expense.currency,
+          currency: expense.currency || 'EUR',
           category: expense.category as ExpenseCategory,
           subcategory: undefined,
           numberOfPeople: 1,
-          receiptImages: expense.receipt_image_path ? [expense.receipt_image_path] : [],
+          receiptImages: expense.receipt_image_path ? [expense.receipt_image_path] : (expense.receipt_image_url ? [expense.receipt_image_url] : []),
           createdAt: new Date(expense.created_at),
           updatedAt: new Date(expense.updated_at),
-          // Campi aggiuntivi per compatibilità
           merchant: expense.merchant_name,
           location: expense.merchant_address,
           vat: expense.merchant_vat,
@@ -50,33 +49,81 @@ class ExpenseService {
         };
       });
 
-      // Se ci sono dati locali, restituisci le spese filtrate
-      if (localExpenses.length > 0) {
-        return apiFormatExpenses;
-      }
+      try {
+        // Fallback or Pull Sync: always try to fetch from server to keep local DB updated
+        const report = await databaseManager.getExpenseReportById(reportId);
+        const serverReportId = report?.server_id || (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(reportId) ? reportId : null);
 
-      // Fallback: se non ci sono dati locali, prova il server
-      // Ma solo se reportId sembra un GUID valido (server_id)
-      const isGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(reportId);
+        if (serverReportId) {
+          const response = await apiClient.get<ApiResponse<Expense[]>>(`/expenses/report/${serverReportId}`);
 
-      if (isGuid) {
-        const response = await apiClient.get<ApiResponse<Expense[]>>(`/expenses/report/${reportId}`);
+          if (response.success && response.data) {
+            const serverExpenses = response.data;
+            let hasNewItems = false;
 
-        if (response.success && response.data) {
-          return response.data;
+            for (const se of serverExpenses) {
+              const existsLocally = localExpenses.find(le => le.server_id === se.id || le.id === se.id);
+              if (!existsLocally) {
+                try {
+                  console.log('🔄 Pull sync: saving server expense locally:', se.id);
+                  const newId = await databaseManager.createExpense({
+                    expense_report_id: reportId, // use the requested reportId so it links locally
+                    amount: se.amount,
+                    currency: se.currency || 'EUR',
+                    merchant_name: se.merchant || se.description || '',
+                    merchant_address: se.location || '',
+                    merchant_vat: se.vat || '',
+                    category: se.category || 'other',
+                    receipt_date: se.date || (se.createdAt ? new Date(se.createdAt).toISOString() : new Date().toISOString()),
+                    receipt_time: '00:00',
+                    notes: se.note || se.description || '',
+                    is_archived: false,
+                    server_id: se.id,
+                    sync_status: 'synced',
+                    kilometers: (se as any).kilometers || null,
+                    fuel_liters: (se as any).fuelLiters || null,
+                    fuel_type: (se as any).fuelType || null,
+                    receipt_image_path: se.receiptImages?.[0] || null,
+                    receipt_image_url: se.receiptImages?.[0] || null
+                  } as any);
+
+                  // Remove from sync queue to avoid re-pushing
+                  const syncQueue = await databaseManager.getSyncQueue();
+                  const queueItem = syncQueue.find(q => q.record_id === newId);
+                  if (queueItem) {
+                    await databaseManager.removeSyncQueueItem(queueItem.id);
+                  }
+
+                  hasNewItems = true;
+
+                  // Fix: only push to API formats if not already there, avoiding duplicate map refs
+                  if (!apiFormatExpenses.find(a => a.id === se.id)) {
+                    apiFormatExpenses.push({
+                      ...se,
+                      currency: se.currency || 'EUR'
+                    } as any);
+                  }
+                } catch (e) { console.error('❌ Silent sync insert failed for', se.id, e); }
+              }
+            }
+
+            if (hasNewItems) {
+              // Resort expenses
+              apiFormatExpenses.sort((a, b) => {
+                const dateA = a.date ? new Date(a.date).getTime() : new Date(a.createdAt).getTime();
+                const dateB = b.date ? new Date(b.date).getTime() : new Date(b.createdAt).getTime();
+                return dateB - dateA;
+              });
+            }
+          }
         }
-
-        throw new Error(response.error || 'Failed to fetch expenses');
+      } catch (error) {
+        console.warn('⚠️ Silent pull sync failed (offline or server error)');
       }
 
-      // Se reportId è un local_id e non ci sono dati locali, restituisci array vuoto
-      console.log('⚠️ No local expenses found for local reportId:', reportId);
-      return [];
-
+      return apiFormatExpenses as Expense[];
     } catch (error) {
       console.error('❌ Error loading expenses:', error);
-
-      // Se tutto fallisce, restituisci un array vuoto per evitare crash
       return [];
     }
   }

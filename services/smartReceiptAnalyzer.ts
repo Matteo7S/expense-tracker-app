@@ -151,14 +151,14 @@ class SmartReceiptAnalyzer {
 
     // Pattern per importi in diverse forme
     const amountPatterns = [
-      // Formato europeo: €12,34 o EUR 12,34
-      /(?:€|EUR|euro)\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})/gi,
+      // Formato europeo: €12,34 o EUR 12,34, $12.34, £12.34, CHF 12.34
+      /(?:€|EUR|euro|\$|USD|£|GBP|CHF|CHF\.)\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})/gi,
       // Formato: 12,34 € o 12,34 EUR
-      /(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\s*(?:€|EUR|euro)/gi,
+      /(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\s*(?:€|EUR|euro|\$|USD|£|GBP|CHF|CHF\.)/gi,
       // Formato semplice: 12.34 o 12,34
       /(?:^|\s)(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})(?:\s|$)/g,
       // Totali specifici
-      /(?:totale|total|tot[.:]?)\s*(?:€|EUR)?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})/gi,
+      /(?:totale|total|tot[.:]?)\s*(?:€|EUR|\$|USD|£|GBP|CHF|CHF\.)?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})/gi,
     ];
 
     lines.forEach((line, lineIndex) => {
@@ -169,15 +169,29 @@ class SmartReceiptAnalyzer {
         while ((match = globalPattern.exec(line)) !== null) {
           const amountText = match[1] || match[0];
           const numericValue = this.parseAmountToNumber(amountText);
+          const currency = this.extractCurrency(match[0]);
 
           if (numericValue > 0) {
+            // Fix per saltare volumi di carburante scambiati per importi
+            const matchEnd = match.index! + match[0].length;
+            const textAfterMatch = line.slice(matchEnd).trim();
+            const textBeforeMatch = line.slice(0, match.index!).trim();
+
+            const isFuelVolume = /^(?:l\b|lt\b|litri\b|gal\b)/i.test(textAfterMatch) ||
+              /(?:erogato|litri|lt|volume|quantità|qty)\s*[:=]?$/i.test(textBeforeMatch);
+
+            if (isFuelVolume && !/[€$£]|EUR|USD|GBP|CHF/i.test(match[0])) {
+              console.log(`🚫 DEBUG: Skipping amount ${numericValue} as it appears to be a fuel volume.`);
+              continue; // Salta questo match
+            }
+
             // Context-aware type determination
             const type = this.determineAmountTypeWithContext(line, lineIndex, lines, numericValue);
             const confidence = this.calculateAmountConfidence(line, match[0], type);
 
             amounts.push({
               value: numericValue,
-              currency: 'EUR',
+              currency,
               type,
               text: match[0],
               confidence,
@@ -198,11 +212,24 @@ class SmartReceiptAnalyzer {
   }
 
   /**
+   * Estrae la valuta dal testo dell'importo se presente
+   */
+  private extractCurrency(text: string): string {
+    const upperText = text.toUpperCase();
+    if (upperText.includes('$') || upperText.includes('USD')) return 'USD';
+    if (upperText.includes('£') || upperText.includes('GBP')) return 'GBP';
+    if (upperText.includes('CHF')) return 'CHF';
+    // Default a EUR
+    return 'EUR';
+  }
+
+  /**
    * Converte testo importo in numero
    */
   private parseAmountToNumber(amountText: string): number {
     const cleaned = amountText
-      .replace(/[€$£¥EUR USD GBP JPY]/gi, '')
+      .replace(/[€$£¥]/g, '')
+      .replace(/EUR|USD|GBP|JPY|CHF/gi, '')
       .replace(/\s/g, '')
       .trim();
 
@@ -439,9 +466,11 @@ class SmartReceiptAnalyzer {
     if (type === 'subtotal') confidence += 0.2;
     if (type === 'tax') confidence += 0.15;
 
-    // Bonus per formato chiaro
-    if (/€\s*\d+[.,]\d{2}/.test(matchText)) confidence += 0.15;
-    if (/\d+[.,]\d{2}\s*€/.test(matchText)) confidence += 0.1;
+    // Bonus per formato chiaro (con qualsiasi valuta)
+    if (/[€$£]\s*\d+[.,]\d{2}/.test(matchText)) confidence += 0.15;
+    if (/(?:EUR|USD|GBP|CHF)\s*\d+[.,]\d{2}/i.test(matchText)) confidence += 0.15;
+    if (/\d+[.,]\d{2}\s*[€$£]/.test(matchText)) confidence += 0.1;
+    if (/\d+[.,]\d{2}\s*(?:EUR|USD|GBP|CHF)/i.test(matchText)) confidence += 0.1;
 
     // Bonus per posizione nel contesto
     if (/(?:totale|total)/i.test(line)) confidence += 0.2;
@@ -457,12 +486,21 @@ class SmartReceiptAnalyzer {
     const unique: ExtractedAmount[] = [];
 
     for (const amount of amounts) {
-      const isDuplicate = unique.some(existing =>
-        Math.abs(existing.value - amount.value) < 0.01 &&
-        existing.currency === amount.currency
+      const existingIndex = unique.findIndex(existing =>
+        Math.abs(existing.value - amount.value) < 0.01
       );
 
-      if (!isDuplicate) {
+      if (existingIndex >= 0) {
+        const existing = unique[existingIndex];
+        // Se troviamo lo stesso importo ma uno ha la valuta esplicita (non EUR di default)
+        if (existing.currency === 'EUR' && amount.currency !== 'EUR') {
+          unique[existingIndex] = amount;
+        }
+        // A parità di valuta, preferiamo il match con testo più lungo (probabile pattern totale)
+        else if (existing.currency === amount.currency && amount.text.length > existing.text.length) {
+          unique[existingIndex] = amount;
+        }
+      } else {
         unique.push(amount);
       }
     }

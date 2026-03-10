@@ -10,11 +10,13 @@ import {
   Platform,
   ScrollView,
   Image,
+  Switch,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useAuth } from '../../contexts/AuthContext';
 import { AuthStackParamList } from '../../navigation/AuthNavigator';
+import { SecureStorage } from '../../services/secureStorage';
 
 type LoginScreenNavigationProp = StackNavigationProp<AuthStackParamList, 'Login'>;
 
@@ -23,6 +25,27 @@ export function LoginScreen() {
   const { login, loading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
+
+  React.useEffect(() => {
+    const loadRememberedCredentials = async () => {
+      try {
+        const savedEmail = await SecureStorage.getItemAsync('remember_me_email');
+        const savedPassword = await SecureStorage.getItemAsync('remember_me_password');
+
+        if (savedEmail) {
+          setEmail(savedEmail);
+          setRememberMe(true);
+        }
+        if (savedPassword) {
+          setPassword(savedPassword);
+        }
+      } catch (e) {
+        console.error('Failed to load remembered credentials', e);
+      }
+    };
+    loadRememberedCredentials();
+  }, []);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -32,6 +55,15 @@ export function LoginScreen() {
 
     try {
       await login(email, password);
+
+      // Save or remove remembered credentials
+      if (rememberMe) {
+        await SecureStorage.setItemAsync('remember_me_email', email);
+        await SecureStorage.setItemAsync('remember_me_password', password);
+      } else {
+        await SecureStorage.deleteItemAsync('remember_me_email');
+        await SecureStorage.deleteItemAsync('remember_me_password');
+      }
     } catch (error: any) {
       Alert.alert('Errore di Login', error.message || 'Credenziali non valide');
     }
@@ -76,6 +108,18 @@ export function LoginScreen() {
             secureTextEntry
             autoCapitalize="none"
           />
+
+          <View style={styles.rememberContainer}>
+            <Switch
+              value={rememberMe}
+              onValueChange={setRememberMe}
+              trackColor={{ false: '#767577', true: '#81b0ff' }}
+              thumbColor={rememberMe ? '#007AFF' : '#f4f3f4'}
+            />
+            <TouchableOpacity onPress={() => setRememberMe(!rememberMe)}>
+              <Text style={styles.rememberText}>Ricordami</Text>
+            </TouchableOpacity>
+          </View>
 
           <TouchableOpacity
             style={[styles.button, loading && styles.buttonDisabled]}
@@ -173,5 +217,15 @@ const styles = StyleSheet.create({
   linkText: {
     color: '#007AFF',
     fontSize: 16,
+  },
+  rememberContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  rememberText: {
+    marginLeft: 10,
+    fontSize: 16,
+    color: '#333',
   },
 });

@@ -70,6 +70,7 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
 
   // Fuel specific state
   const [kilometers, setKilometers] = useState<string>('');
@@ -88,6 +89,13 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
     { value: 'fuel', label: 'Carburante', icon: 'local-gas-station' },
     { value: 'business', label: 'Business', icon: 'business' },
     { value: 'other', label: 'Altro', icon: 'more-horiz' },
+  ];
+
+  const currencies = [
+    { value: 'EUR', label: '€ EUR' },
+    { value: 'USD', label: '$ USD' },
+    { value: 'GBP', label: '£ GBP' },
+    { value: 'CHF', label: 'CHF' },
   ];
 
   const fuelTypes = [
@@ -294,7 +302,9 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
                 keyboardType="decimal-pad"
                 editable={!isLoading}
               />
-              <Text style={styles.currencyText}>{currency}</Text>
+              <TouchableOpacity onPress={() => !isLoading && setShowCurrencyPicker(true)}>
+                <Text style={styles.currencyText}>{currency}</Text>
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -540,6 +550,48 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
                   textColor={Platform.OS === 'ios' ? '#000' : undefined}
                 />
               </View>
+            </View>
+          </View>
+        )}
+
+        {/* Currency Picker */}
+        {showCurrencyPicker && (
+          <View style={styles.pickerOverlay}>
+            <View style={styles.pickerContainer}>
+              <View style={styles.pickerHeader}>
+                <TouchableOpacity onPress={() => setShowCurrencyPicker(false)}>
+                  <Text style={styles.pickerCancelText}>Annulla</Text>
+                </TouchableOpacity>
+                <Text style={styles.pickerTitle}>Seleziona Valuta</Text>
+                <TouchableOpacity onPress={() => setShowCurrencyPicker(false)}>
+                  <Text style={styles.pickerConfirmText}>Conferma</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.categoryPickerList}>
+                {currencies.map((curr) => (
+                  <TouchableOpacity
+                    key={curr.value}
+                    style={[
+                      styles.categoryPickerItem,
+                      currency === curr.value && styles.categoryPickerItemSelected,
+                    ]}
+                    onPress={() => {
+                      setCurrency(curr.value);
+                      setShowCurrencyPicker(false);
+                    }}
+                  >
+                    <Text style={[
+                      styles.categoryPickerItemText,
+                      currency === curr.value && styles.categoryPickerItemTextSelected,
+                    ]}>
+                      {curr.label}
+                    </Text>
+                    {currency === curr.value && (
+                      <MaterialIcons name="check" size={24} color="#007AFF" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             </View>
           </View>
         )}

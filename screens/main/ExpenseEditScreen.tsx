@@ -63,6 +63,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
 
   // Category picker
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
 
   // Loading states
   const [isLoading, setIsLoading] = useState(true);
@@ -83,6 +84,13 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
     { value: 'business', label: 'Business', icon: 'business' },
     { value: 'fuel', label: 'Carburante', icon: 'local-gas-station' },
     { value: 'other', label: 'Altro', icon: 'more-horiz' },
+  ];
+
+  const currencies = [
+    { value: 'EUR', label: '€ EUR' },
+    { value: 'USD', label: '$ USD' },
+    { value: 'GBP', label: '£ GBP' },
+    { value: 'CHF', label: 'CHF' },
   ];
 
   useEffect(() => {
@@ -281,7 +289,9 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
                 keyboardType="numeric"
                 placeholderTextColor="#999"
               />
-              <Text style={styles.currencyLabel}>€</Text>
+              <TouchableOpacity onPress={() => setShowCurrencyPicker(true)}>
+                <Text style={styles.currencyLabel}>{currency}</Text>
+              </TouchableOpacity>
             </View>
             {errors.amount && <Text style={styles.errorText}>{errors.amount}</Text>}
           </View>
@@ -499,6 +509,51 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
                   <Text style={styles.confirmButtonText}>Conferma</Text>
                 </TouchableOpacity>
               )}
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* Currency Picker Modal */}
+      {showCurrencyPicker && (
+        <Modal
+          transparent={true}
+          animationType="slide"
+          visible={showCurrencyPicker}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.categoryPickerContainer}>
+              <View style={styles.datePickerHeader}>
+                <Text style={styles.datePickerTitle}>Seleziona Valuta</Text>
+                <TouchableOpacity onPress={() => setShowCurrencyPicker(false)}>
+                  <MaterialIcons name="close" size={24} color="#666" />
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.categoryList}>
+                {currencies.map((curr) => (
+                  <TouchableOpacity
+                    key={curr.value}
+                    style={[
+                      styles.categoryItem,
+                      currency === curr.value && styles.categoryItemSelected
+                    ]}
+                    onPress={() => {
+                      setCurrency(curr.value);
+                      setShowCurrencyPicker(false);
+                    }}
+                  >
+                    <Text style={[
+                      styles.categoryItemText,
+                      currency === curr.value && styles.categoryItemTextSelected
+                    ]}>
+                      {curr.label}
+                    </Text>
+                    {currency === curr.value && (
+                      <MaterialIcons name="check" size={24} color="#007AFF" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             </View>
           </View>
         </Modal>
