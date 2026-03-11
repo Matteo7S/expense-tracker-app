@@ -82,6 +82,7 @@ class ExpenseReportService {
                   is_archived: false,
                   sync_status: 'synced',
                   server_id: sr.id,
+                  user_id: sr.userId,
                 } as any);
 
                 // Remove from sync queue

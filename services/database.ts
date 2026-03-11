@@ -308,7 +308,7 @@ class DatabaseManager {
       fullReport.description || null,
       fullReport.start_date || null,
       fullReport.end_date || null,
-      fullReport.user_id || null,
+      fullReport.user_id || this.currentUserId || null,
       fullReport.created_at,
       fullReport.updated_at,
       fullReport.is_archived ? 1 : 0,
@@ -869,10 +869,10 @@ class DatabaseManager {
     let params: any[];
 
     if (this.currentUserId) {
-      query = 'SELECT * FROM expense_reports WHERE title = ? AND user_id = ? AND is_archived = 0';
+      query = 'SELECT * FROM expense_reports WHERE title = ? AND (user_id = ? OR user_id IS NULL) AND is_archived = 0 ORDER BY created_at DESC';
       params = [GENERIC_TITLE, this.currentUserId];
     } else {
-      query = 'SELECT * FROM expense_reports WHERE title = ? AND is_archived = 0';
+      query = 'SELECT * FROM expense_reports WHERE title = ? AND is_archived = 0 ORDER BY created_at DESC';
       params = [GENERIC_TITLE];
     }
 
