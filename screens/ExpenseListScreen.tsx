@@ -40,16 +40,6 @@ export const ExpenseListScreen: React.FC<ExpenseListScreenProps> = ({
   const networkState = useNetworkState();
   const { updateExpense, deleteExpense: crudDeleteExpense } = useExpenseCRUD();
 
-  // Auto-refresh when expenses are modified in other screens
-  useExpenseRefresh(loadExpenses);
-
-  // Carica le spese al mount e quando l'app è inizializzata
-  useEffect(() => {
-    if (appInit.isInitialized) {
-      loadExpenses();
-    }
-  }, [appInit.isInitialized, expenseReportId, showArchived]);
-
   /**
    * Carica le spese dal database locale
    */
@@ -72,6 +62,16 @@ export const ExpenseListScreen: React.FC<ExpenseListScreenProps> = ({
       setIsLoading(false);
     }
   };
+
+  // Auto-refresh when expenses are modified in other screens
+  useExpenseRefresh(loadExpenses);
+
+  // Carica le spese al mount e quando l'app è inizializzata
+  useEffect(() => {
+    if (appInit.isInitialized) {
+      loadExpenses();
+    }
+  }, [appInit.isInitialized, expenseReportId, showArchived]);
 
   /**
    * Refresh manuale con sincronizzazione
