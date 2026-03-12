@@ -35,6 +35,7 @@ class AuthService {
 
     if (response.success && response.data) {
       await SecureStorage.setItemAsync('auth_token', response.data.token);
+      await SecureStorage.setItemAsync('auth_user', JSON.stringify(response.data.user));
       return response.data.user;
     }
 
@@ -57,6 +58,7 @@ class AuthService {
 
     if (response.success && response.data) {
       await SecureStorage.setItemAsync('auth_token', response.data.token);
+      await SecureStorage.setItemAsync('auth_user', JSON.stringify(response.data.user));
       return response.data.user;
     }
 
@@ -70,6 +72,7 @@ class AuthService {
       // Ignore logout errors
     } finally {
       await SecureStorage.deleteItemAsync('auth_token');
+      await SecureStorage.deleteItemAsync('auth_user');
     }
   }
 
@@ -82,13 +85,22 @@ class AuthService {
       const response = await apiClient.authGet<ApiResponse<User>>('/auth/me');
 
       if (response.success && response.data) {
+        await SecureStorage.setItemAsync('auth_user', JSON.stringify(response.data));
         return response.data;
       }
 
       return null;
     } catch (error) {
-      // Safely remove token on error
-      await SecureStorage.deleteItemAsync('auth_token');
+      // Se c'è un errore di rete o il server non è raggiungibile, prova a usare i dati salvati offline.
+      // api.ts gestisce già la cancellazione del token in caso di vero 401 Unauthorized.
+      const cachedUser = await SecureStorage.getItemAsync('auth_user');
+      if (cachedUser) {
+        try {
+          return JSON.parse(cachedUser) as User;
+        } catch (e) {
+          // Fallback if parsing fails
+        }
+      }
       return null;
     }
   }
