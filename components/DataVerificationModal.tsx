@@ -153,14 +153,18 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
   };
 
   const handleDateChange = (event: any, date?: Date) => {
-    setShowDatePicker(false);
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
     if (date) {
       setSelectedDate(date);
     }
   };
 
   const handleTimeChange = (event: any, time?: Date) => {
-    setShowTimePicker(false);
+    if (Platform.OS === 'android') {
+      setShowTimePicker(false);
+    }
     if (time) {
       setSelectedTime(time);
     }

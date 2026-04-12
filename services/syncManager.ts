@@ -12,6 +12,10 @@ import { databaseManager, ExpenseReport, Expense, SyncQueueItem } from './databa
 import { networkManager } from './networkManager';
 import { receiptService } from './receiptService';
 import { useEffect, useState } from 'react';
+import * as FileSystem from 'expo-file-system/legacy';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import { resolveReceiptPath } from '../utils/receiptPath';
+import { toRelativeReceiptPath } from '../utils/receiptPath';
 
 export interface SyncStats {
   pendingSync: number;
@@ -22,6 +26,7 @@ export interface SyncStats {
 
 class SyncManager {
   private isRunning = false;
+  private hasRequeued = false;
   private syncIntervalId: NodeJS.Timeout | null = null;
   private listeners: Array<(stats: SyncStats) => void> = [];
   private stats: SyncStats = {
@@ -89,6 +94,41 @@ class SyncManager {
   }
 
   /**
+   * Re-enqueue expenses that have sync_status pending/error, no server_id,
+   * and are not already in the sync queue (orphaned after failed attempts).
+   */
+  private async requeueOrphanedExpenses(): Promise<void> {
+    try {
+      const db = (databaseManager as any).db;
+      if (!db) return;
+
+      const orphaned = await db.getAllAsync<any>(`
+        SELECT e.* FROM expenses e
+        LEFT JOIN sync_queue sq ON sq.record_id = e.id AND sq.table_name = 'expenses'
+        WHERE e.server_id IS NULL
+          AND e.sync_status IN ('pending', 'error')
+          AND sq.id IS NULL
+      `);
+
+      for (const expense of orphaned) {
+        console.log('🔄 Re-queuing orphaned expense:', expense.id, expense.merchant_name);
+        await databaseManager.addToSyncQueue({
+          table_name: 'expenses',
+          record_id: expense.id,
+          action: 'create',
+          data: expense
+        });
+      }
+
+      if (orphaned.length > 0) {
+        console.log(`🔄 Re-queued ${orphaned.length} orphaned expenses`);
+      }
+    } catch (e) {
+      console.error('❌ Failed to requeue orphaned expenses:', e);
+    }
+  }
+
+  /**
    * Sincronizza tutto nella coda
    */
   async syncAll(): Promise<void> {
@@ -112,6 +152,12 @@ class SyncManager {
 
     try {
       console.log('🔄 Starting sync process...');
+
+      // Re-enqueue orphaned expenses once per app session
+      if (!this.hasRequeued) {
+        this.hasRequeued = true;
+        await this.requeueOrphanedExpenses();
+      }
 
       // Prima pulisci i duplicati dalla coda
       await databaseManager.cleanupSyncQueueDuplicates();
@@ -160,10 +206,20 @@ class SyncManager {
             error instanceof Error ? error.message : String(error)
           );
 
-          // Rimuovi item dopo 5 tentativi falliti
+          // Rimuovi item dopo 5 tentativi falliti e segna come failed
           if (newAttempts >= 5) {
             console.log(`❌ Removing item ${item.id} after ${newAttempts} failed attempts`);
             await databaseManager.removeSyncQueueItem(item.id);
+            // Mark the record as permanently failed so requeueOrphanedExpenses won't re-add it
+            try {
+              const db = (databaseManager as any).db;
+              if (db) {
+                await db.runAsync(
+                  `UPDATE ${item.table_name} SET sync_status = 'failed' WHERE id = ?`,
+                  [item.record_id]
+                );
+              }
+            } catch (e) { /* ignore */ }
           }
         }
       }
@@ -369,12 +425,22 @@ class SyncManager {
         console.log('📤 [SYNC EXPENSE] Using parent server_id:', parentReport.server_id);
         console.log('📷 [SYNC EXPENSE] Receipt image path:', expense.receipt_image_path || 'none');
 
+        // Resolve relative path to absolute and check if file exists
+        let imagePath = resolveReceiptPath(expense.receipt_image_path) || undefined;
+        if (imagePath) {
+          const fileInfo = await FileSystem.getInfoAsync(imagePath);
+          if (!fileInfo.exists) {
+            console.warn('⚠️ [SYNC EXPENSE] Image file no longer exists, syncing without image:', imagePath);
+            imagePath = undefined;
+          }
+        }
+
         // ✨ Usa una singola chiamata API che gestisce sia i dati che l'immagine
         console.log('🌐 [SYNC EXPENSE] Calling receiptService.createExpenseWithImage...');
         const createResult = await receiptService.createExpenseWithImage(
           parentReport.server_id,
           expenseDataForServer,
-          expense.receipt_image_path
+          imagePath
         );
 
         console.log('🌐 [SYNC EXPENSE] Server response:', JSON.stringify(createResult, null, 2));
@@ -383,12 +449,33 @@ class SyncManager {
           console.log('✅ [SYNC EXPENSE] Expense created on server successfully');
           console.log('📝 [SYNC EXPENSE] Server expense ID:', createResult.data?.id);
 
+          // Generate local thumbnail and delete full-size image
+          let localThumbPath = expense.receipt_image_path;
+          if (imagePath) {
+            try {
+              const thumbResult = await manipulateAsync(
+                imagePath,
+                [{ resize: { width: 300 } }],
+                { compress: 0.7, format: SaveFormat.JPEG }
+              );
+              const thumbFileName = `thumb_${toRelativeReceiptPath(expense.receipt_image_path || 'receipt.jpg')}`;
+              const thumbDest = `${FileSystem.documentDirectory}${thumbFileName}`;
+              await FileSystem.moveAsync({ from: thumbResult.uri, to: thumbDest });
+              await FileSystem.deleteAsync(imagePath, { idempotent: true });
+              localThumbPath = thumbFileName;
+              console.log('🖼️ [SYNC EXPENSE] Thumbnail created, original deleted:', thumbFileName);
+            } catch (thumbErr) {
+              console.warn('⚠️ [SYNC EXPENSE] Thumbnail creation failed, keeping original:', thumbErr);
+            }
+          }
+
           console.log('💾 [SYNC EXPENSE] Updating local expense with server data...');
           // Usa updateExpenseLocal per evitare di aggiungere nuovamente alla sync queue
           await databaseManager.updateExpenseLocal(expense.id, {
             server_id: createResult.data?.id,
             receipt_image_url: createResult.data?.receiptImageUrl,
             receipt_thumbnail_url: createResult.data?.receiptThumbnailUrl,
+            receipt_image_path: localThumbPath,
             sync_status: 'synced',
             last_sync: new Date().toISOString()
           });
@@ -407,12 +494,16 @@ class SyncManager {
 
         // Upload nuova immagine se cambiata
         let updatedImageUrl = expense.receipt_image_url;
-        if (expense.receipt_image_path && !expense.receipt_image_url) {
-          const imageResult = await receiptService.uploadReceiptImage(expense.receipt_image_path);
+        const resolvedUpdateImagePath = resolveReceiptPath(expense.receipt_image_path);
+        if (resolvedUpdateImagePath && !expense.receipt_image_url) {
+          const imageResult = await receiptService.uploadReceiptImage(resolvedUpdateImagePath);
           if (imageResult.success) {
             updatedImageUrl = imageResult.data?.url;
           }
         }
+
+        // Only send receiptImageUrl if it's a valid URL (not a bare filename)
+        const validImageUrl = updatedImageUrl && /^https?:\/\//.test(updatedImageUrl) ? updatedImageUrl : undefined;
 
         const updateResult = await receiptService.updateExpense(expense.server_id, {
           amount: expense.amount,
@@ -423,7 +514,7 @@ class SyncManager {
           category: expense.category,
           receiptDate: expense.receipt_date,
           receiptTime: expense.receipt_time,
-          receiptImageUrl: updatedImageUrl,
+          receiptImageUrl: validImageUrl,
           extractedData: expense.extracted_data ? JSON.parse(expense.extracted_data) : undefined,
           notes: expense.notes,
           kilometers: expense.kilometers,

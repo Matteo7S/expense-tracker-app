@@ -3,6 +3,38 @@ import { databaseManager } from './database';
 import { Expense, CreateExpenseData, ApiResponse, ExpenseCategory, FoodSubcategory } from '../types';
 import * as FileSystem from 'expo-file-system';
 import { triggerExpenseRefresh } from '../hooks/useExpenseRefresh';
+import { API_ENDPOINTS } from '../config/api';
+import { resolveReceiptPath } from '../utils/receiptPath';
+
+function buildReceiptUrl(filenameOrUrl: string | undefined | null): string | null {
+  if (!filenameOrUrl) return null;
+  // localhost URLs are invalid on device — extract filename
+  if (filenameOrUrl.includes('localhost')) {
+    const parts = filenameOrUrl.split('/uploads/');
+    if (parts.length === 2) {
+      filenameOrUrl = parts[1];
+    } else {
+      return null;
+    }
+  }
+  // Already a full URL (remote)
+  if (filenameOrUrl.startsWith('http://') || filenameOrUrl.startsWith('https://')) {
+    return filenameOrUrl;
+  }
+  // Absolute file:// path — return as-is (local image)
+  if (filenameOrUrl.startsWith('file://')) {
+    return filenameOrUrl;
+  }
+  // Could be a relative local receipt path (e.g. "receipt_xxx.jpg" or "receipts/receipt_xxx.jpg")
+  if (filenameOrUrl.startsWith('receipt')) {
+    const resolved = resolveReceiptPath(filenameOrUrl);
+    if (resolved) return resolved;
+  }
+  // Just a server filename — prepend server uploads path
+  // MAIN_API ends with .../api/ but uploads are served at .../uploads/ (sibling, not child)
+  const baseUrl = API_ENDPOINTS.MAIN_API.replace(/api\/$/, '');
+  return `${baseUrl}uploads/${filenameOrUrl}`;
+}
 
 interface ReceiptAnalysisRequest {
   reportId: string;
@@ -38,7 +70,7 @@ class ExpenseService {
           category: expense.category as ExpenseCategory,
           subcategory: undefined,
           numberOfPeople: 1,
-          receiptImages: expense.receipt_image_path ? [expense.receipt_image_path] : (expense.receipt_image_url ? [expense.receipt_image_url] : []),
+          receiptImages: (() => { const url = buildReceiptUrl(expense.receipt_image_url) || buildReceiptUrl(expense.receipt_image_path); return url ? [url] : []; })(),
           createdAt: new Date(expense.created_at),
           updatedAt: new Date(expense.updated_at),
           merchant: expense.merchant_name,
@@ -104,6 +136,28 @@ class ExpenseService {
                     } as any);
                   }
                 } catch (e) { console.error('❌ Silent sync insert failed for', se.id, e); }
+              } else {
+                // Expense exists locally — update key fields from server (receipt_date, amount, etc.)
+                try {
+                  const updates: any = {};
+                  if (se.date && !existsLocally.receipt_date) updates.receipt_date = se.date;
+                  if (se.amount && existsLocally.amount !== se.amount) updates.amount = se.amount;
+                  if (se.merchant && !existsLocally.merchant_name) updates.merchant_name = se.merchant;
+                  if (!se.archived && existsLocally.is_archived && existsLocally.sync_status === 'synced') updates.is_archived = false;
+
+                  if (Object.keys(updates).length > 0) {
+                    await databaseManager.updateExpense(existsLocally.id, updates);
+                  }
+
+                  // If unarchived, add to visible list
+                  if (updates.is_archived === false && !apiFormatExpenses.find(a => a.id === se.id)) {
+                    apiFormatExpenses.push({
+                      ...se,
+                      currency: se.currency || 'EUR'
+                    } as any);
+                    hasNewItems = true;
+                  }
+                } catch (e) { console.error('❌ Failed to update local expense from server', se.id, e); }
               }
             }
 
@@ -134,6 +188,11 @@ class ExpenseService {
       const localExpense = await databaseManager.getExpenseById(id);
 
       if (localExpense) {
+        console.log('🖼️ [getExpense] Image fields:', {
+          receipt_image_url: localExpense.receipt_image_url,
+          receipt_image_path: localExpense.receipt_image_path,
+          builtUrl: buildReceiptUrl(localExpense.receipt_image_url) || buildReceiptUrl(localExpense.receipt_image_path)
+        });
         // Converti dal formato database locale al formato API
         return {
           id: localExpense.server_id || localExpense.id,
@@ -144,7 +203,7 @@ class ExpenseService {
           category: localExpense.category as ExpenseCategory,
           subcategory: undefined,
           numberOfPeople: 1,
-          receiptImages: localExpense.receipt_image_path ? [localExpense.receipt_image_path] : [],
+          receiptImages: (() => { const url = buildReceiptUrl(localExpense.receipt_image_url) || buildReceiptUrl(localExpense.receipt_image_path); return url ? [url] : []; })(),
           createdAt: new Date(localExpense.created_at),
           updatedAt: new Date(localExpense.updated_at),
           // Campi aggiuntivi per compatibilità
@@ -180,6 +239,12 @@ class ExpenseService {
       console.log('📋 [CREATE EXPENSE] amount:', data.amount);
       console.log('📋 [CREATE EXPENSE] category:', data.category);
       console.log('📋 [CREATE EXPENSE] description:', data.description);
+
+      // Auto-resolve reportId to the default report if not provided
+      if (!data.reportId) {
+        data.reportId = await databaseManager.getDefaultReportId();
+        console.log('📋 [CREATE EXPENSE] Auto-resolved reportId to default:', data.reportId);
+      }
 
       // Verifica lo stato del report parent
       try {
@@ -471,7 +536,7 @@ class ExpenseService {
           category: expense.category as ExpenseCategory,
           subcategory: undefined,
           numberOfPeople: 1,
-          receiptImages: expense.receipt_image_path ? [expense.receipt_image_path] : [],
+          receiptImages: (() => { const url = buildReceiptUrl(expense.receipt_image_url) || buildReceiptUrl(expense.receipt_image_path); return url ? [url] : []; })(),
           createdAt: new Date(expense.created_at),
           updatedAt: new Date(expense.updated_at),
           // Campi aggiuntivi per compatibilità
