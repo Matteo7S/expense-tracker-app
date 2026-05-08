@@ -1358,6 +1358,8 @@ class SmartReceiptAnalyzer {
     date: string; // ISO date string
     time?: string; // HH:MM format
     merchantName?: string;
+    merchantAddress?: string;
+    merchantVat?: string;
     extractedData: any; // Full analysis for reference
   } {
     // Importo: usa primaryAmount o il primo disponibile
@@ -1388,8 +1390,10 @@ class SmartReceiptAnalyzer {
       }
     }
 
-    // Merchant name opzionale
+    // Merchant info opzionali
     const merchantName = analysis.merchant?.name;
+    const merchantAddress = analysis.merchant?.address;
+    const merchantVat = analysis.merchant?.vatNumber;
 
     return {
       amount,
@@ -1397,6 +1401,8 @@ class SmartReceiptAnalyzer {
       date,
       time,
       merchantName,
+      merchantAddress,
+      merchantVat,
       extractedData: {
         overallAccuracy: analysis.overallAccuracy,
         amounts: analysis.amounts,

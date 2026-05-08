@@ -76,6 +76,8 @@ export function GenericLiveOCRScreen() {
   // Data verification modal
   const [showDataVerificationModal, setShowDataVerificationModal] = useState(false);
   const [verificationData, setVerificationData] = useState<ExtractedData>({});
+  // Fields extracted by OCR but NOT shown in the verification modal — saved straight to the expense
+  const [ocrSilentFields, setOcrSilentFields] = useState<{ merchantAddress?: string; merchantVat?: string }>({});
   const progressAnimation = useRef(new Animated.Value(0)).current;
   const cameraRef = useRef(null);
   const isWeb = Platform.OS === 'web';
@@ -346,6 +348,12 @@ export function GenericLiveOCRScreen() {
           console.log('🔍 Validation result:', validation);
           console.log('📊 Extracted data:', extractedData);
 
+          // Capture address/VAT silently — they bypass the verification modal
+          setOcrSilentFields({
+            merchantAddress: extractedData.merchantAddress,
+            merchantVat: extractedData.merchantVat
+          });
+
           // Aggiorna i dati di verifica con i dati estratti
           verificationData = {
             amount: extractedData.amount,
@@ -436,6 +444,8 @@ export function GenericLiveOCRScreen() {
         amount: confirmedData.amount || 0,
         currency: confirmedData.currency || 'EUR',
         merchant_name: confirmedData.merchantName,
+        merchant_address: ocrSilentFields.merchantAddress,
+        merchant_vat: ocrSilentFields.merchantVat,
         category,
         receipt_date: confirmedData.date,
         receipt_time: confirmedData.time,
