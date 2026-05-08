@@ -10,11 +10,13 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { MaterialIcons } from '@expo/vector-icons';
 import { TabParamList } from '../../navigation/MainNavigator';
+import { useI18n } from '../../i18n';
 
 type GenericScanScreenNavigationProp = BottomTabNavigationProp<TabParamList, 'GenericScan'>;
 
 export function GenericScanScreen() {
   const navigation = useNavigation<GenericScanScreenNavigationProp>();
+  const { t } = useI18n();
 
   useFocusEffect(
     useCallback(() => {
@@ -30,7 +32,7 @@ export function GenericScanScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.centerContent}>
         <MaterialIcons name="camera-alt" size={64} color="#007AFF" />
-        <Text style={styles.loadingText}>Apertura scanner...</Text>
+        <Text style={styles.loadingText}>{t('scanner.opening')}</Text>
       </View>
     </SafeAreaView>
   );

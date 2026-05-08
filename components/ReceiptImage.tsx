@@ -15,6 +15,8 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Expense } from '../services/database';
+import { resolveReceiptPath } from '../utils/receiptPath';
+import { useI18n } from '../i18n';
 
 interface ReceiptImageProps {
   expense: Expense;
@@ -32,52 +34,46 @@ export const ReceiptImage: React.FC<ReceiptImageProps> = ({
   const [showFullImage, setShowFullImage] = useState(false);
   const [thumbnailLoading, setThumbnailLoading] = useState(true);
   const [fullImageLoading, setFullImageLoading] = useState(true);
+  const { formatDate, t } = useI18n();
 
   const getThumbnailSource = () => {
-    // Preferisci il thumbnail per la vista anteprima
+    // Preferisci thumbnail/immagine locale (può essere il thumb generato dopo sync)
+    if (expense.receipt_image_path) {
+      return { uri: resolveReceiptPath(expense.receipt_image_path)! };
+    }
+    // Fallback al thumbnail server
     if (expense.receipt_thumbnail_url) {
       return { uri: expense.receipt_thumbnail_url };
     }
-    
-    // Fallback all'immagine completa
+    // Fallback all'immagine server completa
     if (expense.receipt_image_url) {
       return { uri: expense.receipt_image_url };
     }
-    
-    // Fallback all'immagine locale
-    if (expense.receipt_image_path) {
-      return { uri: expense.receipt_image_path };
-    }
-    
     return null;
   };
 
   const getFullImageSource = () => {
-    // Per la vista a schermo intero, usa sempre l'immagine originale se disponibile
+    // Full-size: preferisci sempre il server (l'originale locale è stato cancellato dopo sync)
     if (expense.receipt_image_url) {
       return { uri: expense.receipt_image_url };
     }
-    
-    // Fallback al thumbnail se l'originale non è disponibile
+    // Fallback all'immagine locale (pre-sync, ha ancora l'originale)
+    if (expense.receipt_image_path) {
+      return { uri: resolveReceiptPath(expense.receipt_image_path)! };
+    }
     if (expense.receipt_thumbnail_url) {
       return { uri: expense.receipt_thumbnail_url };
     }
-    
-    // Fallback all'immagine locale
-    if (expense.receipt_image_path) {
-      return { uri: expense.receipt_image_path };
-    }
-    
     return null;
   };
 
   const getSyncStatus = () => {
     if (expense.receipt_image_url && expense.receipt_thumbnail_url) {
-      return { status: 'synced', text: 'Online', color: '#28a745' };
+      return { status: 'synced', text: t('receiptImage.online'), color: '#28a745' };
     } else if (expense.receipt_image_path) {
-      return { status: 'local', text: 'Solo locale', color: '#f0ad4e' };
+      return { status: 'local', text: t('receiptImage.localOnly'), color: '#f0ad4e' };
     } else {
-      return { status: 'none', text: 'Nessuna immagine', color: '#6c757d' };
+      return { status: 'none', text: t('receiptImage.noImage'), color: '#6c757d' };
     }
   };
 
@@ -89,7 +85,7 @@ export const ReceiptImage: React.FC<ReceiptImageProps> = ({
     return (
       <View style={[styles.noImageContainer, style, { height: thumbnailHeight }]}>
         <Text style={styles.noImageText}>📷</Text>
-        <Text style={styles.noImageLabel}>Nessuna immagine</Text>
+        <Text style={styles.noImageLabel}>{t('receiptImage.noImage')}</Text>
       </View>
     );
   }
@@ -118,7 +114,7 @@ export const ReceiptImage: React.FC<ReceiptImageProps> = ({
 
           {showFullscreenButton && (
             <View style={styles.imageOverlay}>
-              <Text style={styles.overlayText}>Tocca per ingrandire</Text>
+              <Text style={styles.overlayText}>{t('receiptImage.tapToZoom')}</Text>
             </View>
           )}
 
@@ -159,18 +155,18 @@ export const ReceiptImage: React.FC<ReceiptImageProps> = ({
               {fullImageLoading && (
                 <View style={styles.fullImageLoadingOverlay}>
                   <ActivityIndicator size="large" color="#fff" />
-                  <Text style={styles.loadingText}>Caricamento immagine...</Text>
+                  <Text style={styles.loadingText}>{t('receiptImage.loadingImage')}</Text>
                 </View>
               )}
               
               {/* Informazioni immagine */}
               <View style={styles.imageInfo}>
                 <Text style={styles.imageInfoText}>
-                  {expense.receipt_image_url ? 'Immagine online' : 'Immagine locale'}
+                  {expense.receipt_image_url ? t('receiptImage.onlineImage') : t('receiptImage.localImage')}
                 </Text>
                 {expense.receipt_date && (
                   <Text style={styles.imageInfoText}>
-                    {new Date(expense.receipt_date).toLocaleDateString('it-IT')}
+                    {formatDate(expense.receipt_date)}
                   </Text>
                 )}
               </View>

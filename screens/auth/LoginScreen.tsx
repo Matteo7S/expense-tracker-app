@@ -12,17 +12,13 @@ import {
   Image,
   Switch,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
 import { useAuth } from '../../contexts/AuthContext';
-import { AuthStackParamList } from '../../navigation/AuthNavigator';
 import { SecureStorage } from '../../services/secureStorage';
-
-type LoginScreenNavigationProp = StackNavigationProp<AuthStackParamList, 'Login'>;
+import { useI18n } from '../../i18n';
 
 export function LoginScreen() {
-  const navigation = useNavigation<LoginScreenNavigationProp>();
   const { login, loading } = useAuth();
+  const { t } = useI18n();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
@@ -49,7 +45,7 @@ export function LoginScreen() {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Errore', 'Per favore inserisci email e password');
+      Alert.alert(t('common.error'), t('auth.missingCredentials'));
       return;
     }
 
@@ -65,12 +61,8 @@ export function LoginScreen() {
         await SecureStorage.deleteItemAsync('remember_me_password');
       }
     } catch (error: any) {
-      Alert.alert('Errore di Login', error.message || 'Credenziali non valide');
+      Alert.alert(t('auth.loginErrorTitle'), error.message || t('auth.invalidCredentials'));
     }
-  };
-
-  const navigateToRegister = () => {
-    navigation.navigate('Register');
   };
 
   return (
@@ -86,27 +78,31 @@ export function LoginScreen() {
             resizeMode="contain"
           />
           <Text style={styles.title}>Wel-Fy</Text>
-          <Text style={styles.subtitle}>Gestisci le tue spese</Text>
+          <Text style={styles.subtitle}>{t('auth.subtitle')}</Text>
         </View>
 
         <View style={styles.form}>
           <TextInput
             style={styles.input}
             placeholder="Email"
+            placeholderTextColor="#8e8e93"
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
+            cursorColor="#007AFF"
           />
 
           <TextInput
             style={styles.input}
             placeholder="Password"
+            placeholderTextColor="#8e8e93"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
             autoCapitalize="none"
+            cursorColor="#007AFF"
           />
 
           <View style={styles.rememberContainer}>
@@ -117,7 +113,7 @@ export function LoginScreen() {
               thumbColor={rememberMe ? '#007AFF' : '#f4f3f4'}
             />
             <TouchableOpacity onPress={() => setRememberMe(!rememberMe)}>
-              <Text style={styles.rememberText}>Ricordami</Text>
+              <Text style={styles.rememberText}>{t('auth.rememberMe')}</Text>
             </TouchableOpacity>
           </View>
 
@@ -127,18 +123,13 @@ export function LoginScreen() {
             disabled={loading}
           >
             <Text style={styles.buttonText}>
-              {loading ? 'Accesso in corso...' : 'Accedi'}
+              {loading ? t('auth.loginLoading') : t('auth.login')}
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.linkButton}
-            onPress={navigateToRegister}
-          >
-            <Text style={styles.linkText}>
-              Non hai un account? Registrati
-            </Text>
-          </TouchableOpacity>
+          <Text style={styles.accountNotice}>
+            {t('auth.accountCreatedByAdmin')}
+          </Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -190,6 +181,7 @@ const styles = StyleSheet.create({
   input: {
     borderWidth: 1,
     borderColor: '#ddd',
+    color: '#1c1c1e',
     padding: 15,
     borderRadius: 8,
     marginBottom: 15,
@@ -211,12 +203,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  linkButton: {
-    alignItems: 'center',
-  },
-  linkText: {
-    color: '#007AFF',
-    fontSize: 16,
+  accountNotice: {
+    color: '#666',
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
   },
   rememberContainer: {
     flexDirection: 'row',

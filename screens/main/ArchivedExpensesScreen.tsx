@@ -21,11 +21,13 @@ import { expenseService } from '../../services/expenseService';
 import { databaseManager } from '../../services/database';
 import { MainStackParamList } from '../../navigation/MainNavigator';
 import { SwipeableExpenseItem } from '../../components/SwipeableExpenseItem.fallback';
+import { useI18n } from '../../i18n';
 
 type ArchivedExpensesScreenNavigationProp = StackNavigationProp<MainStackParamList, 'ArchivedExpenses'>;
 
 export function ArchivedExpensesScreen() {
   const navigation = useNavigation<ArchivedExpensesScreenNavigationProp>();
+  const { formatDate, locale, t } = useI18n();
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [allExpenses, setAllExpenses] = useState<Expense[]>([]);
@@ -65,7 +67,7 @@ export function ArchivedExpensesScreen() {
       setAllExpenses(archivedExpenses);
       setExpenses(archivedExpenses); // Initially show all archived expenses
     } catch (error: any) {
-      Alert.alert('Errore', 'Impossibile caricare le spese archiviate');
+      Alert.alert(t('common.error'), t('archived.loadError'));
       console.error('Error loading archived expenses:', error);
     } finally {
       setLoading(false);
@@ -128,7 +130,7 @@ export function ArchivedExpensesScreen() {
     const dateRange = getDateRange(filterType);
     if (!dateRange) {
       if (filterType === 'custom') {
-        Alert.alert('Attenzione', 'Seleziona entrambe le date per il filtro personalizzato');
+        Alert.alert(t('common.warning'), t('expenses.customDatesMissing'));
       }
       return;
     }
@@ -196,17 +198,17 @@ export function ArchivedExpensesScreen() {
 
   const handleRestoreExpenses = async () => {
     if (selectedExpenses.size === 0) {
-      Alert.alert('Attenzione', 'Seleziona almeno una spesa da ripristinare');
+      Alert.alert(t('common.warning'), t('archived.restoreSelectedMissing'));
       return;
     }
 
     Alert.alert(
-      'Conferma Ripristino',
-      `Ripristinare ${selectedExpenses.size} spese selezionate?`,
+      t('archived.restoreConfirmTitle'),
+      t('archived.restoreSelectedConfirm', { count: selectedExpenses.size }),
       [
-        { text: 'Annulla', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Ripristina',
+          text: t('archived.restore'),
           onPress: async () => {
             try {
               const selectedIds = Array.from(selectedExpenses);
@@ -227,7 +229,7 @@ export function ArchivedExpensesScreen() {
               
             } catch (error) {
               console.error('❌ Failed to restore expenses:', error);
-              Alert.alert('Errore', 'Impossibile ripristinare le spese selezionate');
+              Alert.alert(t('common.error'), t('archived.restoreSelectedError'));
             }
           }
         }
@@ -248,7 +250,7 @@ export function ArchivedExpensesScreen() {
       console.log('✅ Expense deleted successfully');
     } catch (error) {
       console.error('❌ Failed to delete expense:', error);
-      Alert.alert('Errore', 'Impossibile eliminare la spesa');
+      Alert.alert(t('common.error'), t('archived.deleteError'));
     }
   };
 
@@ -261,7 +263,7 @@ export function ArchivedExpensesScreen() {
       const expense = allExpenses.find(e => e.id === expenseId);
       if (!expense) {
         console.error('❌ Expense not found in allExpenses list');
-        Alert.alert('Errore', 'Spesa non trovata');
+        Alert.alert(t('common.error'), t('archived.expenseNotFound'));
         return;
       }
       
@@ -312,7 +314,7 @@ export function ArchivedExpensesScreen() {
     } catch (error) {
       console.error('❌ Failed to analyze expense for restore:', error);
       console.error('❌ Error details:', error instanceof Error ? error.message : error);
-      Alert.alert('Errore', `Impossibile analizzare la spesa per il ripristino: ${error instanceof Error ? error.message : 'Errore sconosciuto'}`);
+      Alert.alert(t('common.error'), `${t('archived.analyzeRestoreError')}: ${error instanceof Error ? error.message : t('common.error')}`);
     }
   };
   
@@ -344,11 +346,11 @@ export function ArchivedExpensesScreen() {
       setExpenses(prev => prev.filter(expense => expense.id !== expenseId));
       await loadArchivedExpenses();
       
-      Alert.alert('Successo', 'Spesa e nota spese originale ripristinate con successo');
+      Alert.alert(t('common.success'), t('archived.restoreWithReportSuccess'));
       
     } catch (error) {
       console.error('❌ Failed to restore expense with report:', error);
-      Alert.alert('Errore', 'Impossibile ripristinare la spesa con la nota spese originale');
+      Alert.alert(t('common.error'), t('archived.restoreWithReportError'));
     }
   };
   
@@ -376,11 +378,11 @@ export function ArchivedExpensesScreen() {
       setExpenses(prev => prev.filter(expense => expense.id !== expenseId));
       await loadArchivedExpenses();
       
-      Alert.alert('Successo', 'Spesa ripristinata in "Note Spese Generiche"');
+      Alert.alert(t('common.success'), t('archived.restoreGenericSuccess'));
       
     } catch (error) {
       console.error('❌ Failed to restore expense to generic:', error);
-      Alert.alert('Errore', 'Impossibile ripristinare la spesa nelle Note Spese Generiche');
+      Alert.alert(t('common.error'), t('archived.restoreGenericError'));
     }
   };
   
@@ -400,11 +402,11 @@ export function ArchivedExpensesScreen() {
       setExpenses(prev => prev.filter(expense => expense.id !== expenseId));
       await loadArchivedExpenses();
       
-      Alert.alert('Successo', 'Spesa ripristinata con successo');
+      Alert.alert(t('common.success'), t('archived.restoreSuccess'));
       
     } catch (error) {
       console.error('❌ Failed to restore expense:', error);
-      Alert.alert('Errore', 'Impossibile ripristinare la spesa');
+      Alert.alert(t('common.error'), t('archived.restoreError'));
     }
   };
   
@@ -426,7 +428,7 @@ export function ArchivedExpensesScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Caricamento...</Text>
+        <Text style={styles.loadingText}>{t('common.loading')}</Text>
       </View>
     );
   }
@@ -441,7 +443,7 @@ export function ArchivedExpensesScreen() {
       isSelected={selectedExpenses.has(item.id)}
       onSelect={() => handleSelectExpense(item.id)}
       selectionMode={selectionMode}
-      moveLabel="Ripristina" // Custom label for the move action
+      moveLabel={t('expenses.restore')}
     />
   );
 
@@ -459,7 +461,7 @@ export function ArchivedExpensesScreen() {
           >
             <MaterialIcons name="arrow-back" size={24} color="#007AFF" />
           </TouchableOpacity>
-          <Text style={styles.title}>Archivio Spese</Text>
+          <Text style={styles.title}>{t('archived.title')}</Text>
           <View style={styles.placeholder} />
         </View>
 
@@ -467,7 +469,7 @@ export function ArchivedExpensesScreen() {
         <View style={styles.expensesSection}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>
-              Spese Archiviate ({expenses.length})
+              {t('archived.sectionTitle', { count: expenses.length })}
             </Text>
             {(expenses.length > 0 || activeFilter !== 'all') && (
               <View style={styles.headerButtons}>
@@ -481,7 +483,7 @@ export function ArchivedExpensesScreen() {
                     color={activeFilter !== 'all' ? "#FF9500" : "#007AFF"} 
                   />
                   <Text style={[styles.filterButtonText, activeFilter !== 'all' && styles.filterButtonTextActive]}>
-                    Filtra
+                    {t('expenses.filter')}
                   </Text>
                 </TouchableOpacity>
                 {expenses.length > 0 && (
@@ -495,7 +497,7 @@ export function ArchivedExpensesScreen() {
                       color="#007AFF" 
                     />
                     <Text style={styles.selectionButtonText}>
-                      {selectionMode ? 'Annulla' : 'Seleziona'}
+                      {selectionMode ? t('common.cancel') : t('expenses.select')}
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -517,12 +519,12 @@ export function ArchivedExpensesScreen() {
                     color="#007AFF" 
                   />
                   <Text style={styles.selectAllText}>
-                    {selectedExpenses.size === expenses.length ? 'Deseleziona tutto' : 'Seleziona tutto'}
+                    {selectedExpenses.size === expenses.length ? t('common.deselectAll') : t('common.selectAll')}
                   </Text>
                 </TouchableOpacity>
                 
                 <Text style={styles.selectedCountText}>
-                  {selectedExpenses.size} di {expenses.length} selezionate
+                  {t('archived.selectedCount', { selected: selectedExpenses.size, total: expenses.length })}
                 </Text>
               </View>
               
@@ -532,7 +534,7 @@ export function ArchivedExpensesScreen() {
                   onPress={handleRestoreExpenses}
                 >
                   <MaterialIcons name="restore" size={20} color="white" />
-                  <Text style={styles.restoreButtonText}>Ripristina</Text>
+                  <Text style={styles.restoreButtonText}>{t('archived.restore')}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -541,9 +543,9 @@ export function ArchivedExpensesScreen() {
           {expenses.length === 0 ? (
             <View style={styles.emptyContainer}>
               <MaterialIcons name="archive" size={48} color="#ccc" />
-              <Text style={styles.emptyText}>Nessuna spesa archiviata</Text>
+              <Text style={styles.emptyText}>{t('archived.emptyTitle')}</Text>
               <Text style={styles.emptySubtext}>
-                Le spese archiviate appariranno qui
+                {t('archived.emptyHint')}
               </Text>
             </View>
           ) : (
@@ -567,7 +569,7 @@ export function ArchivedExpensesScreen() {
       >
         <SafeAreaView style={styles.filterModalContainer}>
           <View style={styles.filterModalHeader}>
-            <Text style={styles.filterModalTitle}>Filtra Spese Archiviate</Text>
+            <Text style={styles.filterModalTitle}>{t('archived.filterArchived')}</Text>
             <TouchableOpacity
               onPress={() => setShowFilterModal(false)}
               style={styles.filterModalCloseButton}
@@ -579,7 +581,7 @@ export function ArchivedExpensesScreen() {
           <ScrollView style={styles.filterModalContent}>
             {/* Predefined filters */}
             <View style={styles.filterGroup}>
-              <Text style={styles.filterGroupTitle}>Filtri Rapidi</Text>
+              <Text style={styles.filterGroupTitle}>{t('expenses.quickFilters')}</Text>
               
               <TouchableOpacity
                 style={[styles.filterOption, activeFilter === 'current_month' && styles.filterOptionActive]}
@@ -587,7 +589,7 @@ export function ArchivedExpensesScreen() {
               >
                 <MaterialIcons name="calendar-today" size={20} color={activeFilter === 'current_month' ? "#FF9500" : "#666"} />
                 <Text style={[styles.filterOptionText, activeFilter === 'current_month' && styles.filterOptionTextActive]}>
-                  Mese Corrente
+                  {t('expenses.currentMonth')}
                 </Text>
                 {activeFilter === 'current_month' && (
                   <MaterialIcons name="check" size={20} color="#FF9500" />
@@ -600,7 +602,7 @@ export function ArchivedExpensesScreen() {
               >
                 <MaterialIcons name="calendar-today" size={20} color={activeFilter === 'previous_month' ? "#FF9500" : "#666"} />
                 <Text style={[styles.filterOptionText, activeFilter === 'previous_month' && styles.filterOptionTextActive]}>
-                  Mese Precedente
+                  {t('expenses.previousMonth')}
                 </Text>
                 {activeFilter === 'previous_month' && (
                   <MaterialIcons name="check" size={20} color="#FF9500" />
@@ -613,7 +615,7 @@ export function ArchivedExpensesScreen() {
               >
                 <MaterialIcons name="date-range" size={20} color={activeFilter === 'current_week' ? "#FF9500" : "#666"} />
                 <Text style={[styles.filterOptionText, activeFilter === 'current_week' && styles.filterOptionTextActive]}>
-                  Settimana Corrente
+                  {t('expenses.currentWeek')}
                 </Text>
                 {activeFilter === 'current_week' && (
                   <MaterialIcons name="check" size={20} color="#FF9500" />
@@ -626,7 +628,7 @@ export function ArchivedExpensesScreen() {
               >
                 <MaterialIcons name="date-range" size={20} color={activeFilter === 'previous_week' ? "#FF9500" : "#666"} />
                 <Text style={[styles.filterOptionText, activeFilter === 'previous_week' && styles.filterOptionTextActive]}>
-                  Settimana Precedente
+                  {t('expenses.previousWeek')}
                 </Text>
                 {activeFilter === 'previous_week' && (
                   <MaterialIcons name="check" size={20} color="#FF9500" />
@@ -636,29 +638,29 @@ export function ArchivedExpensesScreen() {
 
             {/* Custom date range */}
             <View style={styles.filterGroup}>
-              <Text style={styles.filterGroupTitle}>Periodo Personalizzato</Text>
+              <Text style={styles.filterGroupTitle}>{t('expenses.customPeriod')}</Text>
               
               <View style={styles.customDateRow}>
-                <Text style={styles.customDateLabel}>Da:</Text>
+                <Text style={styles.customDateLabel}>{t('expenses.from')}</Text>
                 <TouchableOpacity
                   style={styles.datePickerButton}
                   onPress={() => setShowDateFromPicker(true)}
                 >
                   <Text style={styles.datePickerButtonText}>
-                    {customDateFrom ? customDateFrom.toLocaleDateString('it-IT') : 'Seleziona data'}
+                    {customDateFrom ? formatDate(customDateFrom) : t('expenses.selectDate')}
                   </Text>
                   <MaterialIcons name="calendar-today" size={20} color="#007AFF" />
                 </TouchableOpacity>
               </View>
 
               <View style={styles.customDateRow}>
-                <Text style={styles.customDateLabel}>A:</Text>
+                <Text style={styles.customDateLabel}>{t('expenses.to')}</Text>
                 <TouchableOpacity
                   style={styles.datePickerButton}
                   onPress={() => setShowDateToPicker(true)}
                 >
                   <Text style={styles.datePickerButtonText}>
-                    {customDateTo ? customDateTo.toLocaleDateString('it-IT') : 'Seleziona data'}
+                    {customDateTo ? formatDate(customDateTo) : t('expenses.selectDate')}
                   </Text>
                   <MaterialIcons name="calendar-today" size={20} color="#007AFF" />
                 </TouchableOpacity>
@@ -676,7 +678,7 @@ export function ArchivedExpensesScreen() {
                   styles.applyCustomFilterButtonText,
                   (!customDateFrom || !customDateTo) && styles.applyCustomFilterButtonTextDisabled
                 ]}>
-                  Applica Filtro Personalizzato
+                  {t('expenses.applyCustomFilter')}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -691,7 +693,7 @@ export function ArchivedExpensesScreen() {
                 }}
               >
                 <MaterialIcons name="clear-all" size={20} color="#dc3545" />
-                <Text style={styles.clearAllFiltersButtonText}>Rimuovi Tutti i Filtri</Text>
+                <Text style={styles.clearAllFiltersButtonText}>{t('expenses.clearAllFilters')}</Text>
               </TouchableOpacity>
             )}
           </ScrollView>
@@ -710,6 +712,7 @@ export function ArchivedExpensesScreen() {
               setCustomDateFrom(selectedDate);
             }
           }}
+          locale={locale}
         />
       )}
 
@@ -724,6 +727,7 @@ export function ArchivedExpensesScreen() {
               setCustomDateTo(selectedDate);
             }
           }}
+          locale={locale}
         />
       )}
       
@@ -738,13 +742,12 @@ export function ArchivedExpensesScreen() {
           <View style={styles.restoreModalContainer}>
             <View style={styles.restoreModalHeader}>
               <MaterialIcons name="restore" size={24} color="#007AFF" />
-              <Text style={styles.restoreModalTitle}>Opzioni di Ripristino</Text>
+              <Text style={styles.restoreModalTitle}>{t('archived.restoreOptionsTitle')}</Text>
             </View>
             
             <View style={styles.restoreModalContent}>
               <Text style={styles.restoreModalText}>
-                La nota spese originale "{pendingRestoreReportName}" è archiviata.
-                Come vuoi ripristinare questa spesa?
+                {t('archived.restoreOptionsMessage', { reportName: pendingRestoreReportName || '' })}
               </Text>
               
               <View style={styles.restoreOptionsContainer}>
@@ -754,9 +757,9 @@ export function ArchivedExpensesScreen() {
                 >
                   <MaterialIcons name="unarchive" size={20} color="#4CAF50" />
                   <View style={styles.restoreOptionTextContainer}>
-                    <Text style={styles.restoreOptionTitle}>Ripristina con Nota Spese Originale</Text>
+                    <Text style={styles.restoreOptionTitle}>{t('archived.restoreWithOriginal')}</Text>
                     <Text style={styles.restoreOptionDescription}>
-                      Ripristina sia la spesa che la nota spese "{pendingRestoreReportName}"
+                      {t('archived.restoreWithOriginalDescription', { reportName: pendingRestoreReportName || '' })}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -767,9 +770,9 @@ export function ArchivedExpensesScreen() {
                 >
                   <MaterialIcons name="folder" size={20} color="#FF6B35" />
                   <View style={styles.restoreOptionTextContainer}>
-                    <Text style={styles.restoreOptionTitle}>Ripristina in Note Spese Generiche</Text>
+                    <Text style={styles.restoreOptionTitle}>{t('archived.restoreToGeneric')}</Text>
                     <Text style={styles.restoreOptionDescription}>
-                      Sposta la spesa nelle "Note Spese Generiche"
+                      {t('archived.restoreToGenericDescription')}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -781,7 +784,7 @@ export function ArchivedExpensesScreen() {
                 style={styles.restoreModalCancelButton}
                 onPress={cancelRestoreChoice}
               >
-                <Text style={styles.restoreModalCancelText}>Annulla</Text>
+                <Text style={styles.restoreModalCancelText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
             </View>
           </View>

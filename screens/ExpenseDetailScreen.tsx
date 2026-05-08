@@ -19,6 +19,7 @@ import { Image } from 'expo-image';
 import { databaseManager, Expense } from '../services/database';
 import { SyncStatusMini } from '../components/SyncStatusIndicator';
 import { syncManager } from '../services/syncManager';
+import { resolveReceiptPath } from '../utils/receiptPath';
 
 interface ExpenseDetailScreenProps {
   route: {
@@ -171,43 +172,32 @@ export const ExpenseDetailScreen: React.FC<ExpenseDetailScreenProps> = ({
 
   const getReceiptImageSource = () => {
     if (!expense) return null;
-    
-    // Preferisci il thumbnail se disponibile per la vista anteprima
+    // Thumbnail locale (thumb o originale pre-sync)
+    if (expense.receipt_image_path) {
+      return { uri: resolveReceiptPath(expense.receipt_image_path)! };
+    }
     if (expense.receipt_thumbnail_url) {
       return { uri: expense.receipt_thumbnail_url };
     }
-    
-    // Fallback all'immagine completa
     if (expense.receipt_image_url) {
       return { uri: expense.receipt_image_url };
     }
-    
-    // Fallback all'immagine locale (se ancora disponibile)
-    if (expense.receipt_image_path) {
-      return { uri: expense.receipt_image_path };
-    }
-    
     return null;
   };
 
   const getFullImageSource = () => {
     if (!expense) return null;
-    
-    // Per la vista a schermo intero, usa sempre l'immagine originale se disponibile
+    // Full-size dal server
     if (expense.receipt_image_url) {
       return { uri: expense.receipt_image_url };
     }
-    
-    // Fallback al thumbnail se l'originale non è disponibile
+    // Fallback locale
+    if (expense.receipt_image_path) {
+      return { uri: resolveReceiptPath(expense.receipt_image_path)! };
+    }
     if (expense.receipt_thumbnail_url) {
       return { uri: expense.receipt_thumbnail_url };
     }
-    
-    // Fallback all'immagine locale
-    if (expense.receipt_image_path) {
-      return { uri: expense.receipt_image_path };
-    }
-    
     return null;
   };
 
@@ -245,7 +235,7 @@ export const ExpenseDetailScreen: React.FC<ExpenseDetailScreenProps> = ({
           
           <View style={styles.headerActions}>
             <TouchableOpacity onPress={handleEdit} style={styles.actionButton}>
-              <Text style={styles.actionButtonText}>✏️</Text>
+              <Text style={styles.actionButtonText}>✏️ Modifica</Text>
             </TouchableOpacity>
             
             <TouchableOpacity onPress={handleArchive} style={styles.actionButton}>
@@ -255,7 +245,7 @@ export const ExpenseDetailScreen: React.FC<ExpenseDetailScreenProps> = ({
             </TouchableOpacity>
             
             <TouchableOpacity onPress={handleDelete} style={styles.actionButton}>
-              <Text style={styles.actionButtonText}>🗑️</Text>
+              <Text style={[styles.actionButtonText, styles.deleteActionButtonText]}>🗑️ Cancella</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -455,16 +445,23 @@ const styles = StyleSheet.create({
     // Stili per sync indicator
   },
   headerActions: {
-    flexDirection: 'row'
+    flexDirection: 'row',
+    flexShrink: 0
   },
   actionButton: {
-    padding: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     marginLeft: 8,
-    borderRadius: 20,
+    borderRadius: 18,
     backgroundColor: '#f8f9fa'
   },
   actionButtonText: {
-    fontSize: 18
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#495057'
+  },
+  deleteActionButtonText: {
+    color: '#dc3545'
   },
   archivedBanner: {
     backgroundColor: '#ffc107',

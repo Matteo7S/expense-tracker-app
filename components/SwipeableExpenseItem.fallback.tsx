@@ -8,13 +8,14 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Expense, ExpenseCategory } from '../types';
+import { useI18n } from '../i18n';
 
 interface SwipeableExpenseItemProps {
   expense: Expense;
   onPress: () => void;
   onEdit: () => void;
   onDelete: () => void;
-  onMove: () => void;
+  onMove?: () => void;
   isSelected?: boolean;
   onSelect?: () => void;
   selectionMode?: boolean;
@@ -29,15 +30,17 @@ export function SwipeableExpenseItem({
   onPress,
   onEdit,
   onDelete,
-  onMove,
+  onMove = () => {},
   isSelected = false,
   onSelect,
   selectionMode = false,
-  moveLabel = 'Trasferisci',
+  moveLabel,
   useArchiveInsteadOfDelete = false,
   onArchiveConfirm,
 }: SwipeableExpenseItemProps) {
   const [showActions, setShowActions] = useState(false);
+  const { formatCurrency, formatDate, t } = useI18n();
+  const effectiveMoveLabel = moveLabel || t('expenses.move');
 
   const getCategoryIcon = (category: ExpenseCategory) => {
     switch (category) {
@@ -100,12 +103,12 @@ export function SwipeableExpenseItem({
       onArchiveConfirm();
     } else {
       Alert.alert(
-        useArchiveInsteadOfDelete ? 'Archivia spesa' : 'Elimina spesa',
-        useArchiveInsteadOfDelete ? 'Vuoi archiviare questa spesa?' : 'Vuoi eliminare questa spesa?',
+        useArchiveInsteadOfDelete ? t('expenses.archiveExpenseTitle') : t('expenses.deleteExpenseTitle'),
+        useArchiveInsteadOfDelete ? t('expenses.archiveExpenseMessage') : t('expenses.deleteExpenseMessage'),
         [
-          { text: 'Annulla', style: 'cancel' },
+          { text: t('common.cancel'), style: 'cancel' },
           { 
-            text: useArchiveInsteadOfDelete ? 'Archivia' : 'Elimina', 
+            text: useArchiveInsteadOfDelete ? t('expenses.archive') : t('expenses.delete'),
             style: 'destructive', 
             onPress: onDelete 
           },
@@ -141,7 +144,7 @@ export function SwipeableExpenseItem({
         {/* Expense info */}
         <View style={styles.expenseInfo}>
           <Text style={styles.expenseName}>
-            {expense.merchant || expense.description || 'Commerciante non specificato'}
+            {expense.merchant || expense.description || t('expenses.unspecifiedMerchant')}
           </Text>
           <Text style={styles.expenseCategory}>
             {expense.category}
@@ -149,16 +152,18 @@ export function SwipeableExpenseItem({
           </Text>
           {expense.numberOfPeople && expense.numberOfPeople > 1 && (
             <Text style={styles.expensePeople}>
-              {expense.numberOfPeople} persone
+              {t('expenses.people', { count: expense.numberOfPeople })}
             </Text>
           )}
           <Text style={styles.expenseDate}>
-            {expense.date ? new Date(expense.date).toLocaleDateString('it-IT') : new Date(expense.createdAt).toLocaleDateString('it-IT')}
+            {formatDate(expense.date || expense.createdAt)}
           </Text>
         </View>
         
         {/* Amount */}
-        <Text style={styles.expenseAmount}>€{expense.amount.toFixed(2)}</Text>
+        <Text style={styles.expenseAmount}>
+          {formatCurrency(expense.amount, expense.currency || 'EUR')}
+        </Text>
       </TouchableOpacity>
       
       {/* Action buttons (shown when item is long-pressed) */}
@@ -166,17 +171,17 @@ export function SwipeableExpenseItem({
         <View style={styles.actionsContainer}>
           <TouchableOpacity style={styles.editButton} onPress={() => { onEdit(); setShowActions(false); }}>
             <MaterialIcons name="edit" size={16} color="white" />
-            <Text style={styles.actionButtonText}>Modifica</Text>
+            <Text style={styles.actionButtonText}>{t('expenses.edit')}</Text>
           </TouchableOpacity>
           
           <TouchableOpacity style={styles.moveButton} onPress={() => { onMove(); setShowActions(false); }}>
-            <MaterialIcons name={moveLabel === 'Ripristina' ? "restore" : "swap-horiz"} size={16} color="white" />
-            <Text style={styles.actionButtonText}>{moveLabel}</Text>
+            <MaterialIcons name={effectiveMoveLabel === t('expenses.restore') ? "restore" : "swap-horiz"} size={16} color="white" />
+            <Text style={styles.actionButtonText}>{effectiveMoveLabel}</Text>
           </TouchableOpacity>
           
           <TouchableOpacity style={styles.deleteButton} onPress={handleDeletePress}>
             <MaterialIcons name={useArchiveInsteadOfDelete ? "archive" : "delete"} size={16} color="white" />
-            <Text style={styles.actionButtonText}>{useArchiveInsteadOfDelete ? 'Archivia' : 'Elimina'}</Text>
+            <Text style={styles.actionButtonText}>{useArchiveInsteadOfDelete ? t('expenses.archive') : t('expenses.delete')}</Text>
           </TouchableOpacity>
         </View>
       )}

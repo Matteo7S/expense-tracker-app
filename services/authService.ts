@@ -10,6 +10,7 @@ interface LoginRequest {
 interface LoginResponse {
   user: User;
   token: string;
+  refreshToken?: string;
 }
 
 interface RegisterRequest {
@@ -35,6 +36,9 @@ class AuthService {
 
     if (response.success && response.data) {
       await SecureStorage.setItemAsync('auth_token', response.data.token);
+      if (response.data.refreshToken) {
+        await SecureStorage.setItemAsync('auth_refresh_token', response.data.refreshToken);
+      }
       await SecureStorage.setItemAsync('auth_user', JSON.stringify(response.data.user));
       return response.data.user;
     }
@@ -58,6 +62,9 @@ class AuthService {
 
     if (response.success && response.data) {
       await SecureStorage.setItemAsync('auth_token', response.data.token);
+      if (response.data.refreshToken) {
+        await SecureStorage.setItemAsync('auth_refresh_token', response.data.refreshToken);
+      }
       await SecureStorage.setItemAsync('auth_user', JSON.stringify(response.data.user));
       return response.data.user;
     }
@@ -67,11 +74,13 @@ class AuthService {
 
   async logout(): Promise<void> {
     try {
-      await apiClient.authPost('/auth/logout');
+      const refreshToken = await SecureStorage.getItemAsync('auth_refresh_token');
+      await apiClient.authPost('/auth/logout', refreshToken ? { refreshToken } : undefined);
     } catch (error) {
       // Ignore logout errors
     } finally {
       await SecureStorage.deleteItemAsync('auth_token');
+      await SecureStorage.deleteItemAsync('auth_refresh_token');
       await SecureStorage.deleteItemAsync('auth_user');
     }
   }

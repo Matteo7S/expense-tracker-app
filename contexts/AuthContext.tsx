@@ -3,6 +3,8 @@ import { AuthContextType, User } from '../types';
 import { authService } from '../services/authService';
 import { postRegistrationSyncService, PostRegistrationSyncResult } from '../services/postRegistrationSyncService';
 import { databaseManager } from '../services/database';
+import { authEvents } from '../utils/authEvents';
+import { serverPullSyncService } from '../services/serverPullSyncService';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -27,12 +29,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     checkAuthState();
   }, []);
 
+  useEffect(() => {
+    const unsubscribe = authEvents.on('forceLogout', () => {
+      console.warn('🚪 [AUTH] forceLogout received - clearing session');
+      databaseManager.setCurrentUserId(null);
+      setUser(null);
+    });
+    return unsubscribe;
+  }, []);
+
   const checkAuthState = async () => {
     try {
       const currentUser = await authService.getCurrentUser();
       if (currentUser) {
         console.log('👤 [AUTH] User authenticated:', currentUser.email, 'ID:', currentUser.id);
         databaseManager.setCurrentUserId(currentUser.id);
+        await serverPullSyncService.pullUserData();
       }
       setUser(currentUser);
     } catch (error) {
@@ -49,6 +61,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const loggedInUser = await authService.login(email, password);
       console.log('👤 [AUTH] User logged in:', loggedInUser.email, 'ID:', loggedInUser.id);
       databaseManager.setCurrentUserId(loggedInUser.id);
+      await serverPullSyncService.pullUserData();
       setUser(loggedInUser);
     } catch (error) {
       console.error('Login error:', error);

@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useSyncStats } from '../services/syncManager';
 import { useNetworkState } from '../hooks/useNetworkState';
+import { useI18n } from '../i18n';
 
 interface SyncStatusIndicatorProps {
   showDetails?: boolean;
@@ -27,51 +28,52 @@ export const SyncStatusIndicator: React.FC<SyncStatusIndicatorProps> = ({
 }) => {
   const syncStats = useSyncStats();
   const networkState = useNetworkState();
+  const { t } = useI18n();
 
   const getSyncStatusInfo = () => {
     if (!networkState.isConnected || !networkState.isInternetReachable) {
       return {
-        text: 'Offline',
+        text: t('sync.offline'),
         color: '#f0ad4e',
         icon: '📴',
-        description: 'Modifiche salvate localmente'
+        description: t('sync.localChanges')
       };
     }
 
     if (syncStats.isRunning) {
       return {
-        text: 'Sincronizzazione...',
+        text: t('sync.syncing'),
         color: '#007bff',
         icon: <ActivityIndicator size="small" color="#007bff" />,
-        description: `Sincronizzando ${syncStats.pendingSync} elementi`
+        description: t('sync.syncingItems', { count: syncStats.pendingSync })
       };
     }
 
     if (syncStats.pendingSync > 0) {
       return {
-        text: `${syncStats.pendingSync} in attesa`,
+        text: t('sync.pending', { count: syncStats.pendingSync }),
         color: '#f0ad4e',
         icon: '⏳',
-        description: 'Elementi in attesa di sincronizzazione'
+        description: t('sync.pendingDescription')
       };
     }
 
     if (syncStats.errors > 0) {
       return {
-        text: 'Errori di sync',
+        text: t('sync.errors'),
         color: '#dc3545',
         icon: '⚠️',
-        description: 'Alcuni elementi non sono stati sincronizzati'
+        description: t('sync.errorsDescription')
       };
     }
 
     return {
-      text: 'Sincronizzato',
+      text: t('sync.synced'),
       color: '#28a745',
       icon: '✅',
       description: syncStats.lastSync ? 
-        `Ultima sincronizzazione: ${new Date(syncStats.lastSync).toLocaleTimeString()}` : 
-        'Tutti i dati sono sincronizzati'
+        t('sync.lastSync', { time: new Date(syncStats.lastSync).toLocaleTimeString() }) :
+        t('sync.allSynced')
     };
   };
 
@@ -83,7 +85,7 @@ export const SyncStatusIndicator: React.FC<SyncStatusIndicatorProps> = ({
     } else if (showDetails) {
       // Mostra dettagli in un alert
       Alert.alert(
-        'Stato Sincronizzazione',
+        t('sync.statusTitle'),
         statusInfo.description,
         [{ text: 'OK' }]
       );

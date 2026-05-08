@@ -23,10 +23,13 @@ import { CustomAlert } from '../../components/CustomAlert';
 import { SwipeableExpenseItem } from '../../components/SwipeableExpenseItem.fallback';
 import { databaseManager } from '../../services/database';
 import { useExpenseRefresh } from '../../hooks/useExpenseRefresh';
+import { useI18n } from '../../i18n';
 
 type ExpensesScreenNavigationProp = StackNavigationProp<MainStackParamList, 'ExpenseReportsTabs'>;
 
 function ExpenseItem({ expense, onPress, onDelete }: { expense: Expense; onPress: () => void; onDelete: () => void }) {
+  const { formatCurrency, formatDate } = useI18n();
+
   const getCategoryIcon = (category: ExpenseCategory) => {
     switch (category) {
       case ExpenseCategory.FOOD: return 'restaurant';
@@ -66,12 +69,11 @@ function ExpenseItem({ expense, onPress, onDelete }: { expense: Expense; onPress
             {expense.subcategory && ` • ${expense.subcategory}`}
           </Text>
           <Text style={styles.expenseDate}>
-            {expense.date ? new Date(expense.date).toLocaleDateString('it-IT') : new Date(expense.createdAt).toLocaleDateString('it-IT')}
+            {formatDate(expense.date || expense.createdAt)}
           </Text>
         </View>
         <Text style={styles.expenseAmount}>
-          {expense.currency === 'GBP' ? '£' : expense.currency === 'USD' ? '$' : expense.currency === 'CHF' ? 'CHF' : '€'}
-          {expense.amount.toFixed(2)}
+          {formatCurrency(expense.amount, expense.currency || 'EUR')}
         </Text>
       </TouchableOpacity>
       <TouchableOpacity style={styles.deleteExpenseButton} onPress={(e) => { (e as any).stopPropagation?.(); onDelete(); }}>
@@ -83,6 +85,7 @@ function ExpenseItem({ expense, onPress, onDelete }: { expense: Expense; onPress
 
 export function ExpensesScreen() {
   const navigation = useNavigation<ExpensesScreenNavigationProp>();
+  const { formatCurrency, formatDate, locale, t } = useI18n();
   const [defaultReportId, setDefaultReportId] = useState<string | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [allExpenses, setAllExpenses] = useState<Expense[]>([]);
@@ -104,14 +107,19 @@ export function ExpensesScreen() {
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [selectedExpenseIdForArchive, setSelectedExpenseIdForArchive] = useState<string | null>(null);
 
+  // Category filter: set of excluded categories (empty = show all)
+  const [excludedCategories, setExcludedCategories] = useState<Set<string>>(new Set());
+
   // Refs to survive stale closures in useFocusEffect
   const activeFilterRef = useRef(activeFilter);
   const customDateFromRef = useRef(customDateFrom);
   const customDateToRef = useRef(customDateTo);
+  const excludedCategoriesRef = useRef(excludedCategories);
 
   useEffect(() => { activeFilterRef.current = activeFilter; }, [activeFilter]);
   useEffect(() => { customDateFromRef.current = customDateFrom; }, [customDateFrom]);
   useEffect(() => { customDateToRef.current = customDateTo; }, [customDateTo]);
+  useEffect(() => { excludedCategoriesRef.current = excludedCategories; }, [excludedCategories]);
 
   useExpenseRefresh(() => {
     if (defaultReportId) loadExpenses(defaultReportId);
@@ -166,22 +174,27 @@ export function ExpensesScreen() {
     }
   };
 
+  const filterExpenses = (data: Expense[], dateRange: { from: Date; to: Date } | null, excluded: Set<string>): Expense[] => {
+    return data.filter(expense => {
+      if (dateRange) {
+        const d = expense.date ? new Date(expense.date) : new Date(expense.createdAt);
+        if (d < dateRange.from || d > dateRange.to) return false;
+      }
+      if (excluded.size > 0 && excluded.has(expense.category)) return false;
+      return true;
+    });
+  };
+
   const loadExpenses = async (reportId: string, filterOverride?: string) => {
     try {
       const expensesData = await expenseService.getExpenses(reportId, false);
       setAllExpenses(expensesData);
       const currentFilter = filterOverride ?? activeFilterRef.current;
       const dateRange = getDateRange(currentFilter, customDateFromRef.current, customDateToRef.current);
-      if (dateRange) {
-        setExpenses(expensesData.filter(expense => {
-          const d = expense.date ? new Date(expense.date) : new Date(expense.createdAt);
-          return d >= dateRange.from && d <= dateRange.to;
-        }));
-      } else {
-        setExpenses(expensesData);
-      }
+      setExpenses(filterExpenses(expensesData, dateRange, excludedCategoriesRef.current));
+
     } catch (error) {
-      Alert.alert('Errore', 'Impossibile caricare le spese');
+      Alert.alert(t('common.error'), t('expenses.loadError'));
     } finally {
       setLoading(false);
     }
@@ -211,24 +224,22 @@ export function ExpensesScreen() {
 
   const applyFilter = (filterType: string) => {
     if (filterType === 'all') {
-      setExpenses(allExpenses);
+      setExpenses(filterExpenses(allExpenses, null, excludedCategories));
       setActiveFilter('all');
       return;
     }
     const dateRange = getDateRange(filterType);
     if (!dateRange) {
-      if (filterType === 'custom') Alert.alert('Attenzione', 'Seleziona entrambe le date per il filtro personalizzato');
+      if (filterType === 'custom') Alert.alert(t('common.warning'), t('expenses.customDatesMissing'));
       return;
     }
-    setExpenses(allExpenses.filter(expense => {
-      const d = expense.date ? new Date(expense.date) : new Date(expense.createdAt);
-      return d >= dateRange.from && d <= dateRange.to;
-    }));
+    setExpenses(filterExpenses(allExpenses, dateRange, excludedCategories));
     setActiveFilter(filterType);
     setShowFilterModal(false);
   };
 
   const clearFilter = () => {
+    setExcludedCategories(new Set());
     setExpenses(allExpenses);
     setActiveFilter('all');
     setCustomDateFrom(null);
@@ -239,7 +250,7 @@ export function ExpensesScreen() {
 
   const applyCustomFilter = () => {
     if (!tempCustomDateFrom || !tempCustomDateTo) {
-      Alert.alert('Attenzione', 'Seleziona entrambe le date per il filtro personalizzato');
+      Alert.alert(t('common.warning'), t('expenses.customDatesMissing'));
       return;
     }
     setCustomDateFrom(tempCustomDateFrom);
@@ -247,12 +258,29 @@ export function ExpensesScreen() {
     const dateRange = { from: new Date(tempCustomDateFrom), to: new Date(tempCustomDateTo) };
     dateRange.from.setHours(0, 0, 0, 0);
     dateRange.to.setHours(23, 59, 59);
-    setExpenses(allExpenses.filter(expense => {
-      const d = expense.date ? new Date(expense.date) : new Date(expense.createdAt);
-      return d >= dateRange.from && d <= dateRange.to;
-    }));
+    setExpenses(filterExpenses(allExpenses, dateRange, excludedCategories));
     setActiveFilter('custom');
     setShowFilterModal(false);
+  };
+
+  const toggleCategory = (cat: string) => {
+    const next = new Set(excludedCategories);
+    if (next.has(cat)) {
+      next.delete(cat);
+    } else {
+      next.add(cat);
+    }
+    setExcludedCategories(next);
+    const dateRange = activeFilter !== 'all' ? getDateRange(activeFilter) : null;
+    setExpenses(filterExpenses(allExpenses, dateRange, next));
+  };
+
+  const toggleAllCategories = () => {
+    const allCats = ['food', 'transport', 'accommodation', 'entertainment', 'shopping', 'health', 'fuel', 'business', 'other'];
+    const next = excludedCategories.size === 0 ? new Set(allCats) : new Set<string>();
+    setExcludedCategories(next);
+    const dateRange = activeFilter !== 'all' ? getDateRange(activeFilter) : null;
+    setExpenses(filterExpenses(allExpenses, dateRange, next));
   };
 
 
@@ -270,7 +298,7 @@ export function ExpensesScreen() {
       await expenseService.updateExpense(deleteExpenseAlert.expenseId, { isArchived: true });
       if (defaultReportId) await loadExpenses(defaultReportId);
     } catch (error) {
-      Alert.alert('Errore', 'Impossibile archiviare la spesa');
+      Alert.alert(t('common.error'), t('expenseDetail.archiveError'));
     } finally {
       setDeleteExpenseAlert({ visible: false, expenseId: null });
     }
@@ -289,7 +317,7 @@ export function ExpensesScreen() {
       await expenseService.updateExpense(selectedExpenseIdForArchive, { isArchived: true });
       if (defaultReportId) await loadExpenses(defaultReportId);
     } catch (error) {
-      Alert.alert('Errore', 'Impossibile archiviare la spesa');
+      Alert.alert(t('common.error'), t('expenseDetail.archiveError'));
     } finally {
       setShowArchiveModal(false);
       setSelectedExpenseIdForArchive(null);
@@ -313,13 +341,13 @@ export function ExpensesScreen() {
 
   const handleArchiveSelected = async () => {
     if (selectedExpenses.size === 0) {
-      Alert.alert('Attenzione', 'Seleziona almeno una spesa da archiviare');
+      Alert.alert(t('common.warning'), t('expenses.archiveSelectedMissing'));
       return;
     }
-    Alert.alert('Conferma Archiviazione', `Archiviare ${selectedExpenses.size} spese selezionate?`, [
-      { text: 'Annulla', style: 'cancel' },
+    Alert.alert(t('expenses.archiveConfirmTitle'), t('expenses.archiveSelectedConfirm', { count: selectedExpenses.size }), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: 'Archivia',
+        text: t('expenses.archive'),
         onPress: async () => {
           try {
             for (const id of Array.from(selectedExpenses)) {
@@ -329,7 +357,7 @@ export function ExpensesScreen() {
             setSelectedExpenses(new Set());
             if (defaultReportId) await loadExpenses(defaultReportId);
           } catch (error) {
-            Alert.alert('Errore', 'Impossibile archiviare le spese selezionate');
+            Alert.alert(t('common.error'), t('expenses.archiveSelectedError'));
           }
         }
       }
@@ -339,19 +367,40 @@ export function ExpensesScreen() {
   const getMonthName = (offset = 0) => {
     const d = new Date();
     d.setMonth(d.getMonth() + offset);
-    return d.toLocaleDateString('it-IT', { month: 'long' });
+    return formatDate(d, { month: 'long' });
   };
 
-  const getMonthTotal = (offset = 0) => {
+  const formatGroupedTotals = (expenseList: Expense[]) => {
+    const totalsByCurrency = expenseList.reduce<Record<string, number>>((acc, expense) => {
+      const currency = expense.currency || 'EUR';
+      acc[currency] = (acc[currency] || 0) + expense.amount;
+      return acc;
+    }, {});
+
+    const orderedCurrencies = Object.keys(totalsByCurrency).sort((a, b) => {
+      if (a === 'EUR') return -1;
+      if (b === 'EUR') return 1;
+      return a.localeCompare(b);
+    });
+
+    return orderedCurrencies
+      .map((currency) => formatCurrency(totalsByCurrency[currency], currency))
+      .join(' • ');
+  };
+
+  const getMonthExpenses = (offset = 0) => {
     const now = new Date();
     const firstDay = new Date(now.getFullYear(), now.getMonth() + offset, 1);
     const lastDay = new Date(now.getFullYear(), now.getMonth() + offset + 1, 0, 23, 59, 59);
     return allExpenses
-      .filter(e => { const d = e.date ? new Date(e.date) : new Date(e.createdAt); return d >= firstDay && d <= lastDay; })
-      .reduce((sum, e) => sum + e.amount, 0);
+      .filter(e => { const d = e.date ? new Date(e.date) : new Date(e.createdAt); return d >= firstDay && d <= lastDay; });
   };
 
-  const filteredTotal = expenses.reduce((sum, e) => sum + e.amount, 0);
+  const currentMonthExpenses = getMonthExpenses(0);
+  const previousMonthExpenses = getMonthExpenses(-1);
+  const filteredTotal = formatGroupedTotals(expenses);
+  const currentMonthTotal = formatGroupedTotals(currentMonthExpenses);
+  const previousMonthTotal = formatGroupedTotals(previousMonthExpenses);
   const currentMonthName = getMonthName(0).charAt(0).toUpperCase() + getMonthName(0).slice(1);
   const previousMonthName = getMonthName(-1).charAt(0).toUpperCase() + getMonthName(-1).slice(1);
 
@@ -373,7 +422,7 @@ export function ExpensesScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Caricamento...</Text>
+        <Text style={styles.loadingText}>{t('common.loading')}</Text>
       </View>
     );
   }
@@ -387,14 +436,14 @@ export function ExpensesScreen() {
         {/* Totals summary */}
         <View style={styles.summaryCard}>
           <Text style={styles.summaryMonth}>
-            {currentMonthName}: <Text style={styles.summaryAmount}>€{getMonthTotal(0).toFixed(2)}</Text>
+            {currentMonthName}: <Text style={styles.summaryAmount}>{currentMonthTotal || formatCurrency(0, 'EUR')}</Text>
           </Text>
           <Text style={styles.summaryMonth}>
-            {previousMonthName}: <Text style={styles.summaryAmount}>€{getMonthTotal(-1).toFixed(2)}</Text>
+            {previousMonthName}: <Text style={styles.summaryAmount}>{previousMonthTotal || formatCurrency(0, 'EUR')}</Text>
           </Text>
           {activeFilter !== 'all' && (
             <Text style={styles.summaryFiltered}>
-              Totale filtrato: <Text style={styles.summaryAmount}>€{filteredTotal.toFixed(2)}</Text>
+              {t('expenses.filteredTotal')}: <Text style={styles.summaryAmount}>{filteredTotal || formatCurrency(0, 'EUR')}</Text>
             </Text>
           )}
         </View>
@@ -403,14 +452,14 @@ export function ExpensesScreen() {
         <View style={styles.actionButtons}>
           <TouchableOpacity style={styles.actionButton} onPress={handleCameraPress}>
             <MaterialIcons name="camera-alt" size={24} color="white" />
-            <Text style={styles.actionButtonText}>Scansiona</Text>
+            <Text style={styles.actionButtonText}>{t('expenses.scan')}</Text>
           </TouchableOpacity>
         </View>
 
         {/* Expenses list */}
         <View style={styles.expensesSection}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Spese ({expenses.length})</Text>
+            <Text style={styles.sectionTitle}>{t('expenses.titleWithCount', { count: expenses.length })}</Text>
             {(expenses.length > 0 || activeFilter !== 'all') && (
               <View style={styles.headerButtons}>
                 <TouchableOpacity
@@ -435,13 +484,13 @@ export function ExpensesScreen() {
                 >
                   <MaterialIcons name="filter-list" size={18} color={activeFilter === 'custom' ? '#FF9500' : '#007AFF'} />
                   <Text style={[styles.quickFilterButtonText, activeFilter === 'custom' && styles.quickFilterButtonTextActive]}>
-                    Filtro
+                    {t('expenses.filter')}
                   </Text>
                 </TouchableOpacity>
                 {expenses.length > 0 && (
                   <TouchableOpacity style={styles.selectionButton} onPress={handleToggleSelectionMode}>
                     <MaterialIcons name={selectionMode ? 'close' : 'checklist'} size={20} color="#007AFF" />
-                    <Text style={styles.selectionButtonText}>{selectionMode ? 'Annulla' : 'Seleziona'}</Text>
+                    <Text style={styles.selectionButtonText}>{selectionMode ? t('common.cancel') : t('expenses.select')}</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -458,16 +507,16 @@ export function ExpensesScreen() {
                     size={20} color="#007AFF"
                   />
                   <Text style={styles.selectAllText}>
-                    {selectedExpenses.size === expenses.length ? 'Deseleziona tutto' : 'Seleziona tutto'}
+                    {selectedExpenses.size === expenses.length ? t('common.deselectAll') : t('common.selectAll')}
                   </Text>
                 </TouchableOpacity>
-                <Text style={styles.selectedCountText}>{selectedExpenses.size} di {expenses.length}</Text>
+                <Text style={styles.selectedCountText}>{t('expenses.selectedCount', { selected: selectedExpenses.size, total: expenses.length })}</Text>
               </View>
               {selectedExpenses.size > 0 && (
                 <View style={styles.actionButtonsRow}>
                   <TouchableOpacity style={styles.archiveButton} onPress={handleArchiveSelected}>
                     <MaterialIcons name="archive" size={20} color="white" />
-                    <Text style={styles.archiveButtonText}>Archivia</Text>
+                    <Text style={styles.archiveButtonText}>{t('expenses.archive')}</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -477,8 +526,8 @@ export function ExpensesScreen() {
           {expenses.length === 0 ? (
             <View style={styles.emptyContainer}>
               <MaterialIcons name="receipt" size={48} color="#ccc" />
-              <Text style={styles.emptyText}>Nessuna spesa</Text>
-              <Text style={styles.emptySubtext}>Aggiungi la tua prima spesa</Text>
+              <Text style={styles.emptyText}>{t('expenses.none')}</Text>
+              <Text style={styles.emptySubtext}>{t('expenses.emptyHint')}</Text>
             </View>
           ) : (
             <FlatList
@@ -494,11 +543,11 @@ export function ExpensesScreen() {
 
       <CustomAlert
         visible={deleteExpenseAlert.visible}
-        title="Archivia Spesa"
-        message="Vuoi archiviare questa spesa? Potrai recuperarla dalla sezione Archivio."
+        title={t('expenses.archiveExpenseTitle')}
+        message={t('expenses.archiveExpenseMessage')}
         buttons={[
-          { text: 'Annulla', style: 'cancel', onPress: () => setDeleteExpenseAlert({ visible: false, expenseId: null }) },
-          { text: 'Archivia', style: 'destructive', onPress: handleDeleteExpenseConfirm },
+          { text: t('common.cancel'), style: 'cancel', onPress: () => setDeleteExpenseAlert({ visible: false, expenseId: null }) },
+          { text: t('expenses.archive'), style: 'destructive', onPress: handleDeleteExpenseConfirm },
         ]}
         onDismiss={() => setDeleteExpenseAlert({ visible: false, expenseId: null })}
       />
@@ -507,19 +556,19 @@ export function ExpensesScreen() {
       <Modal visible={showFilterModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowFilterModal(false)}>
         <SafeAreaView style={styles.filterModalContainer}>
           <View style={styles.filterModalHeader}>
-            <Text style={styles.filterModalTitle}>Filtra Spese</Text>
+            <Text style={styles.filterModalTitle}>{t('expenses.filterExpenses')}</Text>
             <TouchableOpacity onPress={() => setShowFilterModal(false)} style={styles.filterModalCloseButton}>
               <MaterialIcons name="close" size={24} color="#007AFF" />
             </TouchableOpacity>
           </View>
           <ScrollView style={styles.filterModalContent}>
             <View style={styles.filterGroup}>
-              <Text style={styles.filterGroupTitle}>Filtri Rapidi</Text>
+              <Text style={styles.filterGroupTitle}>{t('expenses.quickFilters')}</Text>
               {[
-                { key: 'current_month', label: 'Mese Corrente', icon: 'calendar-today' as const },
-                { key: 'previous_month', label: 'Mese Precedente', icon: 'calendar-today' as const },
-                { key: 'current_week', label: 'Settimana Corrente', icon: 'date-range' as const },
-                { key: 'previous_week', label: 'Settimana Precedente', icon: 'date-range' as const },
+                { key: 'current_month', label: t('expenses.currentMonth'), icon: 'calendar-today' as const },
+                { key: 'previous_month', label: t('expenses.previousMonth'), icon: 'calendar-today' as const },
+                { key: 'current_week', label: t('expenses.currentWeek'), icon: 'date-range' as const },
+                { key: 'previous_week', label: t('expenses.previousWeek'), icon: 'date-range' as const },
               ].map(({ key, label, icon }) => (
                 <TouchableOpacity
                   key={key}
@@ -534,11 +583,11 @@ export function ExpensesScreen() {
             </View>
 
             <View style={styles.filterGroup}>
-              <Text style={styles.filterGroupTitle}>Periodo Personalizzato</Text>
+              <Text style={styles.filterGroupTitle}>{t('expenses.customPeriod')}</Text>
               <View style={styles.customDateRow}>
-                <Text style={styles.customDateLabel}>Da:</Text>
+                <Text style={styles.customDateLabel}>{t('expenses.from')}</Text>
                 <TouchableOpacity style={styles.datePickerButton} onPress={() => setShowDateFromPicker(!showDateFromPicker)}>
-                  <Text style={styles.datePickerButtonText}>{tempCustomDateFrom ? tempCustomDateFrom.toLocaleDateString('it-IT') : 'Seleziona data'}</Text>
+                  <Text style={styles.datePickerButtonText}>{tempCustomDateFrom ? formatDate(tempCustomDateFrom) : t('expenses.selectDate')}</Text>
                   <MaterialIcons name="calendar-today" size={20} color="#007AFF" />
                 </TouchableOpacity>
               </View>
@@ -547,17 +596,17 @@ export function ExpensesScreen() {
                   <DateTimePicker
                     value={tempCustomDateFrom || new Date()} mode="date" display="compact"
                     onChange={(_, d) => { if (d) setTempCustomDateFrom(d); }}
-                    locale="it-IT" textColor="#000000" accentColor="#007AFF"
+                    locale={locale} textColor="#000000" accentColor="#007AFF"
                   />
                   <TouchableOpacity style={styles.datePickerConfirmButton} onPress={() => setShowDateFromPicker(false)}>
-                    <Text style={styles.datePickerConfirmButtonText}>Conferma</Text>
+                    <Text style={styles.datePickerConfirmButtonText}>{t('common.confirm')}</Text>
                   </TouchableOpacity>
                 </View>
               )}
               <View style={styles.customDateRow}>
-                <Text style={styles.customDateLabel}>A:</Text>
+                <Text style={styles.customDateLabel}>{t('expenses.to')}</Text>
                 <TouchableOpacity style={styles.datePickerButton} onPress={() => setShowDateToPicker(!showDateToPicker)}>
-                  <Text style={styles.datePickerButtonText}>{tempCustomDateTo ? tempCustomDateTo.toLocaleDateString('it-IT') : 'Seleziona data'}</Text>
+                  <Text style={styles.datePickerButtonText}>{tempCustomDateTo ? formatDate(tempCustomDateTo) : t('expenses.selectDate')}</Text>
                   <MaterialIcons name="calendar-today" size={20} color="#007AFF" />
                 </TouchableOpacity>
               </View>
@@ -566,10 +615,10 @@ export function ExpensesScreen() {
                   <DateTimePicker
                     value={tempCustomDateTo || new Date()} mode="date" display="compact"
                     onChange={(_, d) => { if (d) setTempCustomDateTo(d); }}
-                    locale="it-IT" textColor="#000000" accentColor="#007AFF"
+                    locale={locale} textColor="#000000" accentColor="#007AFF"
                   />
                   <TouchableOpacity style={styles.datePickerConfirmButton} onPress={() => setShowDateToPicker(false)}>
-                    <Text style={styles.datePickerConfirmButtonText}>Conferma</Text>
+                    <Text style={styles.datePickerConfirmButtonText}>{t('common.confirm')}</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -579,15 +628,51 @@ export function ExpensesScreen() {
                 disabled={!tempCustomDateFrom || !tempCustomDateTo}
               >
                 <Text style={[styles.applyCustomFilterButtonText, (!tempCustomDateFrom || !tempCustomDateTo) && styles.applyCustomFilterButtonTextDisabled]}>
-                  Applica Filtro Personalizzato
+                  {t('expenses.applyCustomFilter')}
                 </Text>
               </TouchableOpacity>
             </View>
 
-            {activeFilter !== 'all' && (
+            <View style={styles.filterGroup}>
+              <View style={styles.categoryFilterHeader}>
+                <Text style={styles.filterGroupTitle}>{t('expenses.categories')}</Text>
+                <TouchableOpacity onPress={toggleAllCategories}>
+                  <Text style={styles.categoryToggleAllText}>
+                    {excludedCategories.size === 0 ? t('common.deselectAll') : t('common.selectAll')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.categoryChipsContainer}>
+                {([
+                  { key: 'food', label: t('categories.food'), icon: 'restaurant' },
+                  { key: 'transport', label: t('categories.transport'), icon: 'directions-car' },
+                  { key: 'accommodation', label: t('categories.accommodation'), icon: 'hotel' },
+                  { key: 'entertainment', label: t('categories.entertainment'), icon: 'movie' },
+                  { key: 'shopping', label: t('categories.shopping'), icon: 'shopping-bag' },
+                  { key: 'health', label: t('categories.health'), icon: 'local-hospital' },
+                  { key: 'fuel', label: t('categories.fuel'), icon: 'local-gas-station' },
+                  { key: 'business', label: t('categories.business'), icon: 'business' },
+                  { key: 'other', label: t('categories.other'), icon: 'more-horiz' },
+                ] as const).map(({ key, label, icon }) => {
+                  const active = !excludedCategories.has(key);
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      style={[styles.categoryChip, active && styles.categoryChipActive]}
+                      onPress={() => toggleCategory(key)}
+                    >
+                      <MaterialIcons name={icon} size={16} color={active ? '#fff' : '#666'} />
+                      <Text style={[styles.categoryChipText, active && styles.categoryChipTextActive]}>{label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+            {(activeFilter !== 'all' || excludedCategories.size > 0) && (
               <TouchableOpacity style={styles.clearAllFiltersButton} onPress={() => { clearFilter(); setShowFilterModal(false); }}>
                 <MaterialIcons name="clear-all" size={20} color="#dc3545" />
-                <Text style={styles.clearAllFiltersButtonText}>Rimuovi Tutti i Filtri</Text>
+                <Text style={styles.clearAllFiltersButtonText}>{t('expenses.clearAllFilters')}</Text>
               </TouchableOpacity>
             )}
           </ScrollView>
@@ -596,11 +681,11 @@ export function ExpensesScreen() {
 
       <CustomAlert
         visible={showArchiveModal}
-        title="Conferma Archiviazione"
-        message="Sei sicuro di voler archiviare questa spesa? Potrai recuperarla dalle spese archiviate."
+        title={t('expenses.archiveConfirmTitle')}
+        message={t('expenses.archiveConfirmMessage')}
         buttons={[
-          { text: 'Annulla', style: 'cancel', onPress: () => { setShowArchiveModal(false); setSelectedExpenseIdForArchive(null); } },
-          { text: 'Archivia', style: 'destructive', onPress: handleArchiveExpenseConfirm },
+          { text: t('common.cancel'), style: 'cancel', onPress: () => { setShowArchiveModal(false); setSelectedExpenseIdForArchive(null); } },
+          { text: t('expenses.archive'), style: 'destructive', onPress: handleArchiveExpenseConfirm },
         ]}
         onDismiss={() => { setShowArchiveModal(false); setSelectedExpenseIdForArchive(null); }}
       />
@@ -709,6 +794,18 @@ const styles = StyleSheet.create({
   applyCustomFilterButtonDisabled: { backgroundColor: '#ccc' },
   applyCustomFilterButtonText: { color: 'white', fontSize: 16, fontWeight: '600' },
   applyCustomFilterButtonTextDisabled: { color: '#999' },
+  categoryFilterHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16,
+  },
+  categoryToggleAllText: { fontSize: 14, fontWeight: '600', color: '#007AFF' },
+  categoryChipsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  categoryChip: {
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8,
+    borderRadius: 20, backgroundColor: '#f0f0f0',
+  },
+  categoryChipActive: { backgroundColor: '#007AFF' },
+  categoryChipText: { fontSize: 13, fontWeight: '600', color: '#666', marginLeft: 6 },
+  categoryChipTextActive: { color: '#fff' },
   clearAllFiltersButton: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'white',
     paddingVertical: 12, paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderColor: '#dc3545',

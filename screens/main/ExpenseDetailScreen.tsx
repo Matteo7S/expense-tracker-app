@@ -6,18 +6,20 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
-  SafeAreaView,
   ActivityIndicator,
   Image,
   Dimensions,
   Linking,
+  Platform,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Expense, ExpenseCategory } from '../../types';
 import { expenseService } from '../../services/expenseService';
 import { MainStackParamList } from '../../navigation/MainNavigator';
+import { useI18n } from '../../i18n';
 
 type ExpenseDetailScreenNavigationProp = StackNavigationProp<MainStackParamList, 'ExpenseDetail'>;
 type ExpenseDetailScreenRouteProp = RouteProp<MainStackParamList, 'ExpenseDetail'>;
@@ -28,6 +30,9 @@ export function ExpenseDetailScreen() {
   const navigation = useNavigation<ExpenseDetailScreenNavigationProp>();
   const route = useRoute<ExpenseDetailScreenRouteProp>();
   const { expenseId } = route.params;
+  const { formatCurrency, formatDate, t } = useI18n();
+  const insets = useSafeAreaInsets();
+  const bottomSafePadding = Math.max(insets.bottom, Platform.OS === 'android' ? 24 : 16);
 
   const [expense, setExpense] = useState<Expense | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,7 +47,7 @@ export function ExpenseDetailScreen() {
       const expenseData = await expenseService.getExpense(expenseId);
       setExpense(expenseData);
     } catch (error: any) {
-      Alert.alert('Errore', 'Impossibile caricare i dettagli della spesa');
+      Alert.alert(t('common.error'), t('expenseDetail.loadError'));
       console.error('Error loading expense:', error);
       navigation.goBack();
     } finally {
@@ -56,15 +61,15 @@ export function ExpenseDetailScreen() {
 
   const handleDelete = () => {
     Alert.alert(
-      'Archivia Spesa',
-      'Vuoi archiviare questa spesa? Potrai recuperarla dalla sezione Archivio.',
+      t('expenses.archiveExpenseTitle'),
+      t('expenses.archiveExpenseMessage'),
       [
         {
-          text: 'Annulla',
+          text: t('common.cancel'),
           style: 'cancel',
         },
         {
-          text: 'Archivia',
+          text: t('expenses.archive'),
           style: 'destructive',
           onPress: async () => {
             try {
@@ -72,10 +77,10 @@ export function ExpenseDetailScreen() {
               await expenseService.updateExpense(expenseId, {
                 isArchived: true
               });
-              Alert.alert('Successo', 'Spesa archiviata con successo');
+              Alert.alert(t('common.success'), t('expenseDetail.archivedSuccess'));
               navigation.goBack();
             } catch (error: any) {
-              Alert.alert('Errore', 'Impossibile archiviare la spesa');
+              Alert.alert(t('common.error'), t('expenseDetail.archiveError'));
             }
           },
         },
@@ -128,21 +133,21 @@ export function ExpenseDetailScreen() {
   const getCategoryLabel = (category: ExpenseCategory) => {
     switch (category) {
       case ExpenseCategory.FOOD:
-        return 'Cibo e Bevande';
+        return t('categories.foodAndDrinks');
       case ExpenseCategory.TRANSPORT:
-        return 'Trasporti';
+        return t('categories.transport');
       case ExpenseCategory.ACCOMMODATION:
-        return 'Alloggio';
+        return t('categories.accommodation');
       case ExpenseCategory.ENTERTAINMENT:
-        return 'Intrattenimento';
+        return t('categories.entertainment');
       case ExpenseCategory.SHOPPING:
-        return 'Shopping';
+        return t('categories.shopping');
       case ExpenseCategory.HEALTH:
-        return 'Salute';
+        return t('categories.health');
       case ExpenseCategory.BUSINESS:
-        return 'Business';
+        return t('categories.business');
       default:
-        return 'Altro';
+        return t('categories.other');
     }
   };
 
@@ -150,7 +155,7 @@ export function ExpenseDetailScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Caricamento...</Text>
+        <Text style={styles.loadingText}>{t('common.loading')}</Text>
       </View>
     );
   }
@@ -159,13 +164,13 @@ export function ExpenseDetailScreen() {
     return (
       <View style={styles.errorContainer}>
         <MaterialIcons name="error" size={64} color="#ff4444" />
-        <Text style={styles.errorText}>Spesa non trovata</Text>
+        <Text style={styles.errorText}>{t('expenseDetail.notFound')}</Text>
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <ScrollView style={styles.scrollView}>
         {/* Header with expense info */}
         <View style={styles.expenseHeader}>
@@ -175,8 +180,7 @@ export function ExpenseDetailScreen() {
           <View style={styles.expenseInfo}>
             <Text style={styles.expenseDescription}>{expense.merchant || expense.description}</Text>
             <Text style={styles.expenseAmount}>
-              {expense.currency === 'GBP' ? '£' : expense.currency === 'USD' ? '$' : expense.currency === 'CHF' ? 'CHF' : '€'}
-              {expense.amount.toFixed(2)}
+              {formatCurrency(expense.amount, expense.currency || 'EUR')}
             </Text>
           </View>
         </View>
@@ -185,14 +189,14 @@ export function ExpenseDetailScreen() {
         <View style={styles.detailsContainer}>
           <View style={styles.detailItem}>
             <MaterialIcons name="category" size={20} color="#666" />
-            <Text style={styles.detailLabel}>Categoria</Text>
+            <Text style={styles.detailLabel}>{t('expenseDetail.category')}</Text>
             <Text style={styles.detailValue}>{getCategoryLabel(expense.category)}</Text>
           </View>
 
           {expense.subcategory && (
             <View style={styles.detailItem}>
               <MaterialIcons name="label" size={20} color="#666" />
-              <Text style={styles.detailLabel}>Sottocategoria</Text>
+              <Text style={styles.detailLabel}>{t('expenseDetail.subcategory')}</Text>
               <Text style={styles.detailValue}>
                 {expense.subcategory.charAt(0).toUpperCase() + expense.subcategory.slice(1)}
               </Text>
@@ -203,9 +207,9 @@ export function ExpenseDetailScreen() {
           {expense.date && (
             <View style={styles.detailItem}>
               <MaterialIcons name="event" size={20} color="#666" />
-              <Text style={styles.detailLabel}>Data</Text>
+              <Text style={styles.detailLabel}>{t('expenseDetail.date')}</Text>
               <Text style={styles.detailValue}>
-                {new Date(expense.date).toLocaleDateString('it-IT', {
+                {formatDate(expense.date, {
                   year: 'numeric',
                   month: 'long',
                   day: 'numeric',
@@ -218,7 +222,7 @@ export function ExpenseDetailScreen() {
           {expense.aiConfidence && (
             <View style={styles.detailItem}>
               <MaterialIcons name="psychology" size={20} color="#666" />
-              <Text style={styles.detailLabel}>Confidenza AI</Text>
+              <Text style={styles.detailLabel}>{t('expenseDetail.aiConfidence')}</Text>
               <Text style={[styles.detailValue, {
                 color: expense.aiConfidence > 0.8 ? '#4CAF50' : expense.aiConfidence > 0.6 ? '#FF9800' : '#F44336'
               }]}>
@@ -231,7 +235,7 @@ export function ExpenseDetailScreen() {
           {expense.merchant && (
             <View style={styles.detailItem}>
               <MaterialIcons name="store" size={20} color="#666" />
-              <Text style={styles.detailLabel}>Esercente</Text>
+              <Text style={styles.detailLabel}>{t('expenseDetail.merchant')}</Text>
               <Text style={styles.detailValue}>{expense.merchant}</Text>
             </View>
           )}
@@ -240,7 +244,7 @@ export function ExpenseDetailScreen() {
           {expense.location && (
             <View style={styles.detailItem}>
               <MaterialIcons name="location-on" size={20} color="#666" />
-              <Text style={styles.detailLabel}>Indirizzo</Text>
+              <Text style={styles.detailLabel}>{t('expenseDetail.address')}</Text>
               <Text style={styles.detailValue}>{expense.location}</Text>
             </View>
           )}
@@ -249,7 +253,7 @@ export function ExpenseDetailScreen() {
           {expense.vat && (
             <View style={styles.detailItem}>
               <MaterialIcons name="receipt-long" size={20} color="#666" />
-              <Text style={styles.detailLabel}>P.IVA</Text>
+              <Text style={styles.detailLabel}>{t('expenseDetail.vat')}</Text>
               <Text style={styles.detailValue}>{expense.vat}</Text>
             </View>
           )}
@@ -258,7 +262,7 @@ export function ExpenseDetailScreen() {
           {expense.currency && expense.currency !== 'EUR' && (
             <View style={styles.detailItem}>
               <MaterialIcons name="monetization-on" size={20} color="#666" />
-              <Text style={styles.detailLabel}>Valuta</Text>
+              <Text style={styles.detailLabel}>{t('expenseDetail.currency')}</Text>
               <Text style={styles.detailValue}>{expense.currency}</Text>
             </View>
           )}
@@ -266,7 +270,7 @@ export function ExpenseDetailScreen() {
           {expense.numberOfPeople && expense.numberOfPeople > 1 && (
             <View style={styles.detailItem}>
               <MaterialIcons name="people" size={20} color="#666" />
-              <Text style={styles.detailLabel}>Numero di persone</Text>
+              <Text style={styles.detailLabel}>{t('expenseDetail.peopleCount')}</Text>
               <Text style={styles.detailValue}>{expense.numberOfPeople}</Text>
             </View>
           )}
@@ -275,9 +279,9 @@ export function ExpenseDetailScreen() {
 
           <View style={styles.detailItem}>
             <MaterialIcons name="schedule" size={20} color="#666" />
-            <Text style={styles.detailLabel}>Data creazione</Text>
+            <Text style={styles.detailLabel}>{t('expenseDetail.createdAt')}</Text>
             <Text style={styles.detailValue}>
-              {new Date(expense.createdAt).toLocaleDateString('it-IT', {
+              {formatDate(expense.createdAt, {
                 year: 'numeric',
                 month: 'long',
                 day: 'numeric',
@@ -290,9 +294,9 @@ export function ExpenseDetailScreen() {
           {expense.updatedAt && expense.updatedAt !== expense.createdAt && (
             <View style={styles.detailItem}>
               <MaterialIcons name="update" size={20} color="#666" />
-              <Text style={styles.detailLabel}>Ultima modifica</Text>
+              <Text style={styles.detailLabel}>{t('expenseDetail.updatedAt')}</Text>
               <Text style={styles.detailValue}>
-                {new Date(expense.updatedAt).toLocaleDateString('it-IT', {
+                {formatDate(expense.updatedAt, {
                   year: 'numeric',
                   month: 'long',
                   day: 'numeric',
@@ -307,7 +311,7 @@ export function ExpenseDetailScreen() {
         {/* Note dall'AI */}
         {expense.note && (
           <View style={styles.noteContainer}>
-            <Text style={styles.sectionTitle}>Note AI</Text>
+            <Text style={styles.sectionTitle}>{t('expenseDetail.aiNotes')}</Text>
             <View style={styles.noteContent}>
               <MaterialIcons name="info" size={20} color="#666" style={styles.noteIcon} />
               <Text style={styles.noteText}>{expense.note}</Text>
@@ -316,9 +320,9 @@ export function ExpenseDetailScreen() {
         )}
 
         {/* Receipt images */}
-        {(expense.receipts && expense.receipts.length > 0) || (expense.receiptImages && expense.receiptImages.length > 0) && (
+        {((expense.receipts && expense.receipts.length > 0) || (expense.receiptImages && expense.receiptImages.length > 0)) && (
           <View style={styles.receiptsContainer}>
-            <Text style={styles.sectionTitle}>Scontrini</Text>
+            <Text style={styles.sectionTitle}>{t('expenseDetail.receipts')}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               {/* Usa receipts se disponibile (con metadata), altrimenti receiptImages */}
               {expense.receipts && expense.receipts.length > 0 ? (
@@ -335,7 +339,7 @@ export function ExpenseDetailScreen() {
                         {receipt.fileName}
                       </Text>
                       <Text style={styles.receiptDate}>
-                        {new Date(receipt.uploadedAt).toLocaleDateString('it-IT', {
+                        {formatDate(receipt.uploadedAt, {
                           day: '2-digit',
                           month: '2-digit',
                           year: 'numeric',
@@ -346,7 +350,7 @@ export function ExpenseDetailScreen() {
                         onPress={() => Linking.openURL(receipt.imageUrl)}
                       >
                         <MaterialIcons name="open-in-new" size={16} color="#007AFF" />
-                        <Text style={styles.openLinkText}>Apri</Text>
+                        <Text style={styles.openLinkText}>{t('expenseDetail.open')}</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -367,14 +371,14 @@ export function ExpenseDetailScreen() {
         )}
 
         {/* Action buttons */}
-        <View style={styles.actionButtons}>
+        <View style={[styles.actionButtons, { paddingBottom: bottomSafePadding + 16 }]}>
           <TouchableOpacity style={styles.editButton} onPress={handleEdit}>
             <MaterialIcons name="edit" size={24} color="white" />
-            <Text style={styles.editButtonText}>Modifica</Text>
+            <Text style={styles.editButtonText}>{t('expenses.edit')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
             <MaterialIcons name="delete" size={24} color="white" />
-            <Text style={styles.deleteButtonText}>Elimina</Text>
+            <Text style={styles.deleteButtonText}>{t('expenses.delete')}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

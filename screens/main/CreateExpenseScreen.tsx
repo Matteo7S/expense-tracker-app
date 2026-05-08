@@ -18,13 +18,14 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Expense, CreateExpenseData, ExpenseCategory } from '../../types';
 import { expenseService } from '../../services/expenseService';
 import { MainStackParamList } from '../../navigation/MainNavigator';
+import { useI18n } from '../../i18n';
 
 type CreateExpenseScreenNavigationProp = StackNavigationProp<MainStackParamList, 'CreateExpense'>;
 type CreateExpenseScreenRouteProp = RouteProp<MainStackParamList, 'CreateExpense'> | RouteProp<MainStackParamList, 'EditExpense'>;
 
 interface CategoryOption {
   value: ExpenseCategory;
-  label: string;
+  labelKey: string;
   icon: string;
   color: string;
 }
@@ -32,49 +33,49 @@ interface CategoryOption {
 const CATEGORIES: CategoryOption[] = [
   {
     value: ExpenseCategory.FOOD,
-    label: 'Cibo e Bevande',
+    labelKey: 'categories.foodAndDrinks',
     icon: 'restaurant',
     color: '#FF6B6B',
   },
   {
     value: ExpenseCategory.TRANSPORT,
-    label: 'Trasporti',
+    labelKey: 'categories.transport',
     icon: 'directions-car',
     color: '#4ECDC4',
   },
   {
     value: ExpenseCategory.ACCOMMODATION,
-    label: 'Alloggio',
+    labelKey: 'categories.accommodation',
     icon: 'hotel',
     color: '#45B7D1',
   },
   {
     value: ExpenseCategory.ENTERTAINMENT,
-    label: 'Intrattenimento',
+    labelKey: 'categories.entertainment',
     icon: 'movie',
     color: '#96CEB4',
   },
   {
     value: ExpenseCategory.SHOPPING,
-    label: 'Shopping',
+    labelKey: 'categories.shopping',
     icon: 'shopping-bag',
     color: '#FFEAA7',
   },
   {
     value: ExpenseCategory.HEALTH,
-    label: 'Salute',
+    labelKey: 'categories.health',
     icon: 'local-hospital',
     color: '#DDA0DD',
   },
   {
     value: ExpenseCategory.BUSINESS,
-    label: 'Business',
+    labelKey: 'categories.business',
     icon: 'business',
     color: '#98D8C8',
   },
   {
     value: ExpenseCategory.OTHER,
-    label: 'Altro',
+    labelKey: 'categories.other',
     icon: 'more-horiz',
     color: '#BDC3C7',
   },
@@ -83,13 +84,12 @@ const CATEGORIES: CategoryOption[] = [
 export function CreateExpenseScreen() {
   const navigation = useNavigation<CreateExpenseScreenNavigationProp>();
   const route = useRoute<CreateExpenseScreenRouteProp>();
+  const { t } = useI18n();
 
   const isEdit = route.name === 'EditExpense';
-  const reportId = 'reportId' in route.params ? route.params.reportId : '';
-  const expenseId = 'expenseId' in route.params ? route.params.expenseId : '';
+  const expenseId = route.params && 'expenseId' in route.params ? route.params.expenseId : '';
 
   const [formData, setFormData] = useState<CreateExpenseData>({
-    reportId: reportId,
     description: '',
     amount: 0,
     category: ExpenseCategory.OTHER,
@@ -128,7 +128,6 @@ export function CreateExpenseScreen() {
       setLoadingExpense(true);
       const expense = await expenseService.getExpense(expenseId);
       setFormData({
-        reportId: expense.reportId,
         description: expense.description,
         amount: expense.amount,
         category: expense.category,
@@ -138,7 +137,7 @@ export function CreateExpenseScreen() {
       });
       setAmountText(expense.amount.toString());
     } catch (error: any) {
-      Alert.alert('Errore', 'Impossibile caricare la spesa');
+      Alert.alert(t('common.error'), t('expenseForm.loadError'));
       navigation.goBack();
     } finally {
       setLoadingExpense(false);
@@ -149,15 +148,15 @@ export function CreateExpenseScreen() {
     const newErrors: { [key: string]: string } = {};
 
     if (!formData.description.trim()) {
-      newErrors.description = 'Il nome dell\'esercente è obbligatorio';
+      newErrors.description = t('expenseForm.merchantRequired');
     }
 
     if (formData.amount <= 0) {
-      newErrors.amount = 'L\'importo deve essere maggiore di zero';
+      newErrors.amount = t('expenseForm.amountRequired');
     }
 
     if (formData.numberOfPeople && formData.numberOfPeople <= 0) {
-      newErrors.numberOfPeople = 'Il numero di persone deve essere maggiore di zero';
+      newErrors.numberOfPeople = t('expenseForm.peopleRequired');
     }
 
     setErrors(newErrors);
@@ -174,18 +173,18 @@ export function CreateExpenseScreen() {
 
       if (isEdit && expenseId) {
         await expenseService.updateExpense(expenseId, formData);
-        Alert.alert('Successo', 'Spesa aggiornata con successo');
+        Alert.alert(t('common.success'), t('expenseForm.updateSuccess'));
       } else {
         await expenseService.createExpense(formData);
-        Alert.alert('Successo', 'Spesa creata con successo');
+        Alert.alert(t('common.success'), t('expenseForm.createSuccess'));
       }
 
       navigation.goBack();
     } catch (error: any) {
       const errorMessage = isEdit
-        ? 'Impossibile aggiornare la spesa'
-        : 'Impossibile creare la spesa';
-      Alert.alert('Errore', errorMessage);
+        ? t('expenseForm.updateError')
+        : t('expenseForm.createError');
+      Alert.alert(t('common.error'), errorMessage);
       console.error('Error saving expense:', error);
     } finally {
       setLoading(false);
@@ -221,7 +220,7 @@ export function CreateExpenseScreen() {
       <View style={[styles.categoryIcon, { backgroundColor: item.color }]}>
         <MaterialIcons name={item.icon as any} size={24} color="white" />
       </View>
-      <Text style={styles.categoryLabel}>{item.label}</Text>
+      <Text style={styles.categoryLabel}>{t(item.labelKey)}</Text>
       {formData.category === item.value && (
         <MaterialIcons name="check" size={24} color={item.color} />
       )}
@@ -246,7 +245,7 @@ export function CreateExpenseScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Caricamento...</Text>
+        <Text style={styles.loadingText}>{t('common.loading')}</Text>
       </View>
     );
   }
@@ -259,7 +258,7 @@ export function CreateExpenseScreen() {
         <View style={styles.form}>
           {/* Esercente */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Esercente *</Text>
+            <Text style={styles.label}>{t('expenseForm.merchant')}</Text>
             <TextInput
               style={[styles.input, errors.description && styles.inputError]}
               value={formData.description}
@@ -267,7 +266,7 @@ export function CreateExpenseScreen() {
                 setFormData(prev => ({ ...prev, description: text }));
                 setErrors(prev => ({ ...prev, description: '' }));
               }}
-              placeholder="Nome dell'esercente"
+              placeholder={t('expenseForm.merchantPlaceholder')}
               placeholderTextColor="#999"
             />
             {errors.description && <Text style={styles.errorText}>{errors.description}</Text>}
@@ -275,7 +274,7 @@ export function CreateExpenseScreen() {
 
           {/* Importo */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Importo *</Text>
+            <Text style={styles.label}>{t('expenseForm.amount')}</Text>
             <TextInput
               style={[styles.input, errors.amount && styles.inputError]}
               value={amountText}
@@ -289,7 +288,7 @@ export function CreateExpenseScreen() {
 
           {/* Categoria */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Categoria *</Text>
+            <Text style={styles.label}>{t('expenseForm.category')}</Text>
             <TouchableOpacity
               style={styles.categorySelector}
               onPress={() => setShowCategoryModal(true)}
@@ -298,7 +297,7 @@ export function CreateExpenseScreen() {
                 <View style={[styles.categoryIcon, { backgroundColor: selectedCategory.color }]}>
                   <MaterialIcons name={selectedCategory.icon as any} size={20} color="white" />
                 </View>
-                <Text style={styles.categorySelectorText}>{selectedCategory.label}</Text>
+                <Text style={styles.categorySelectorText}>{t(selectedCategory.labelKey)}</Text>
               </View>
               <MaterialIcons name="keyboard-arrow-down" size={24} color="#666" />
             </TouchableOpacity>
@@ -307,7 +306,7 @@ export function CreateExpenseScreen() {
           {/* Sottocategoria */}
           {subcategories.length > 0 && (
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Sottocategoria</Text>
+              <Text style={styles.label}>{t('expenseForm.subcategory')}</Text>
               <TouchableOpacity
                 style={styles.subcategorySelector}
                 onPress={() => setShowSubcategoryModal(true)}
@@ -315,7 +314,7 @@ export function CreateExpenseScreen() {
                 <Text style={[styles.subcategorySelectorText, !formData.subcategory && styles.placeholderText]}>
                   {formData.subcategory
                     ? formData.subcategory.charAt(0).toUpperCase() + formData.subcategory.slice(1)
-                    : 'Seleziona sottocategoria'
+                    : t('expenseForm.selectSubcategoryPlaceholder')
                   }
                 </Text>
                 <MaterialIcons name="keyboard-arrow-down" size={24} color="#666" />
@@ -325,7 +324,7 @@ export function CreateExpenseScreen() {
 
           {/* Numero di persone */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Numero di persone</Text>
+            <Text style={styles.label}>{t('expenseForm.peopleCount')}</Text>
             <TextInput
               style={[styles.input, errors.numberOfPeople && styles.inputError]}
               value={formData.numberOfPeople?.toString() || '1'}
@@ -348,7 +347,7 @@ export function CreateExpenseScreen() {
               onPress={() => navigation.goBack()}
               disabled={loading}
             >
-              <Text style={styles.cancelButtonText}>Annulla</Text>
+              <Text style={styles.cancelButtonText}>{t('common.cancel')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -360,7 +359,7 @@ export function CreateExpenseScreen() {
                 <ActivityIndicator size="small" color="white" />
               ) : (
                 <Text style={styles.saveButtonText}>
-                  {isEdit ? 'Aggiorna' : 'Crea'}
+                  {isEdit ? t('common.update') : t('common.create')}
                 </Text>
               )}
             </TouchableOpacity>
@@ -376,7 +375,7 @@ export function CreateExpenseScreen() {
       >
         <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Seleziona Categoria</Text>
+            <Text style={styles.modalTitle}>{t('expenseForm.selectCategory')}</Text>
             <TouchableOpacity onPress={() => setShowCategoryModal(false)}>
               <MaterialIcons name="close" size={24} color="#666" />
             </TouchableOpacity>
@@ -398,7 +397,7 @@ export function CreateExpenseScreen() {
       >
         <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Seleziona Sottocategoria</Text>
+            <Text style={styles.modalTitle}>{t('expenseForm.selectSubcategory')}</Text>
             <TouchableOpacity onPress={() => setShowSubcategoryModal(false)}>
               <MaterialIcons name="close" size={24} color="#666" />
             </TouchableOpacity>
@@ -413,7 +412,7 @@ export function CreateExpenseScreen() {
                     onPress={() => handleSubcategorySelect('')}
                   >
                     <Text style={[styles.subcategoryLabel, formData.subcategory === '' && styles.subcategoryLabelSelected]}>
-                      Nessuna sottocategoria
+                      {t('expenseForm.noSubcategory')}
                     </Text>
                     {formData.subcategory === '' && (
                       <MaterialIcons name="check" size={20} color="#007AFF" />

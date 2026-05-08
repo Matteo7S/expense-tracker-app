@@ -17,12 +17,14 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { useAuth } from '../../contexts/AuthContext';
 import { AuthStackParamList } from '../../navigation/AuthNavigator';
 import PostRegistrationSyncProgressComponent from '../../components/PostRegistrationSyncProgress';
+import { useI18n } from '../../i18n';
 
 type RegisterScreenNavigationProp = StackNavigationProp<AuthStackParamList, 'Register'>;
 
 export function RegisterScreen() {
   const navigation = useNavigation<RegisterScreenNavigationProp>();
   const { register, loading } = useAuth();
+  const { t } = useI18n();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -41,17 +43,17 @@ export function RegisterScreen() {
 
   const handleRegister = async () => {
     if (!name || !email || !password || !confirmPassword || !company) {
-      Alert.alert('Errore', 'Per favore compila tutti i campi, inclusa l\'azienda');
+      Alert.alert(t('common.error'), t('auth.missingRegisterFields'));
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert('Errore', 'Le password non coincidono');
+      Alert.alert(t('common.error'), t('auth.passwordsDoNotMatch'));
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert('Errore', 'La password deve essere di almeno 6 caratteri');
+      Alert.alert(t('common.error'), t('auth.passwordTooShort'));
       return;
     }
 
@@ -65,7 +67,7 @@ export function RegisterScreen() {
       console.log('✅ Registration completed, sync progress will be shown');
     } catch (error: any) {
       setShowSyncProgress(false);
-      Alert.alert('Errore di Registrazione', error.message || 'Errore durante la registrazione');
+      Alert.alert(t('auth.registerErrorTitle'), error.message || t('auth.registerErrorMessage'));
     }
   };
 
@@ -91,17 +93,17 @@ export function RegisterScreen() {
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <Text style={styles.title}>Registrazione</Text>
-          <Text style={styles.subtitle}>Crea il tuo account</Text>
-          <Text style={styles.requiredNote}>* Campi obbligatori</Text>
+          <Text style={styles.title}>{t('auth.registerTitle')}</Text>
+          <Text style={styles.subtitle}>{t('auth.registerSubtitle')}</Text>
+          <Text style={styles.requiredNote}>{t('auth.requiredFieldsNote')}</Text>
         </View>
 
         <View style={styles.form}>
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Nome Completo *</Text>
+            <Text style={styles.label}>{t('auth.fullName')}</Text>
             <TextInput
               style={styles.input}
-              placeholder="Inserisci il tuo nome e cognome"
+              placeholder={t('auth.fullNamePlaceholder')}
               value={name}
               onChangeText={setName}
               autoCapitalize="words"
@@ -109,10 +111,10 @@ export function RegisterScreen() {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Email *</Text>
+            <Text style={styles.label}>{t('auth.email')}</Text>
             <TextInput
               style={styles.input}
-              placeholder="esempio@email.com"
+              placeholder={t('auth.emailPlaceholder')}
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
@@ -122,10 +124,10 @@ export function RegisterScreen() {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Password *</Text>
+            <Text style={styles.label}>{t('auth.password')}</Text>
             <TextInput
               style={styles.input}
-              placeholder="Minimo 6 caratteri"
+              placeholder={t('auth.passwordPlaceholder')}
               value={password}
               onChangeText={setPassword}
               secureTextEntry
@@ -134,10 +136,10 @@ export function RegisterScreen() {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Conferma Password *</Text>
+            <Text style={styles.label}>{t('auth.confirmPassword')}</Text>
             <TextInput
               style={styles.input}
-              placeholder="Ripeti la password"
+              placeholder={t('auth.confirmPasswordPlaceholder')}
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry
@@ -147,7 +149,7 @@ export function RegisterScreen() {
 
           {/* Company Selection */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Azienda *</Text>
+            <Text style={styles.label}>{t('auth.company')}</Text>
             <TouchableOpacity
               style={styles.dropdownButton}
               onPress={() => setShowCompanyModal(true)}
@@ -155,7 +157,7 @@ export function RegisterScreen() {
               <Text style={[styles.dropdownText, !company && styles.placeholderText]}>
                 {company
                   ? COMPANIES.find(c => c.label === company)?.label || company
-                  : 'Seleziona la tua azienda'}
+                  : t('auth.selectCompany')}
               </Text>
             </TouchableOpacity>
           </View>
@@ -166,7 +168,7 @@ export function RegisterScreen() {
             disabled={loading}
           >
             <Text style={styles.buttonText}>
-              {loading ? 'Registrazione in corso...' : 'Registrati'}
+              {loading ? t('auth.registerLoading') : t('auth.register')}
             </Text>
           </TouchableOpacity>
 
@@ -175,7 +177,7 @@ export function RegisterScreen() {
             onPress={navigateToLogin}
           >
             <Text style={styles.linkText}>
-              Hai già un account? Accedi
+              {t('auth.alreadyHaveAccountLogin')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -198,7 +200,7 @@ export function RegisterScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Seleziona Azienda</Text>
+            <Text style={styles.modalTitle}>{t('auth.selectCompanyTitle')}</Text>
             <FlatList
               data={COMPANIES}
               keyExtractor={(item) => item.id}
@@ -218,7 +220,7 @@ export function RegisterScreen() {
               style={styles.modalCloseButton}
               onPress={() => setShowCompanyModal(false)}
             >
-              <Text style={styles.modalCloseButtonText}>Annulla</Text>
+              <Text style={styles.modalCloseButtonText}>{t('common.cancel')}</Text>
             </TouchableOpacity>
           </View>
         </View>

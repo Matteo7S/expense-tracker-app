@@ -24,11 +24,11 @@
         "buildConfiguration": "Release"
       },
       "android": {
-        "buildType": "apk"
+        "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_AUTH_API_URL": "https://wel-fy.it/api/expense-tracker/auth",
-        "EXPO_PUBLIC_MAIN_API_URL": "https://wel-fy.it/api/expense-tracker"
+        "EXPO_PUBLIC_AUTH_API_URL": "https://wel-fy.it/api/expense-tracker/",
+        "EXPO_PUBLIC_MAIN_API_URL": "https://wel-fy.it/api/expense-tracker/"
       }
     }
   },

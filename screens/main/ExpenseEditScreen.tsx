@@ -11,11 +11,11 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
-  SafeAreaView,
   ActivityIndicator,
   Platform,
   Modal,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -24,9 +24,10 @@ import { databaseManager, Expense } from '../../services/database';
 import { syncManager } from '../../services/syncManager';
 import { MainStackParamList } from '../../navigation/MainNavigator';
 import { triggerExpenseRefresh } from '../../hooks/useExpenseRefresh';
+import { useI18n } from '../../i18n';
 
-type ExpenseEditScreenNavigationProp = StackNavigationProp<MainStackParamList, 'ExpenseEdit'>;
-type ExpenseEditScreenRouteProp = RouteProp<MainStackParamList, 'ExpenseEdit'>;
+type ExpenseEditScreenNavigationProp = StackNavigationProp<MainStackParamList, 'EditExpense'>;
+type ExpenseEditScreenRouteProp = RouteProp<MainStackParamList, 'EditExpense'>;
 
 interface ExpenseEditScreenProps {
   route: {
@@ -42,6 +43,9 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
   navigation
 }) => {
   const { expenseId } = route.params;
+  const { formatDate: formatLocalizedDate, locale, t } = useI18n();
+  const insets = useSafeAreaInsets();
+  const bottomSafePadding = Math.max(insets.bottom, Platform.OS === 'android' ? 24 : 16);
 
   // Form data
   const [expense, setExpense] = useState<Expense | null>(null);
@@ -74,16 +78,15 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
 
   // Categorie disponibili (server API format)
   const categories = [
-    { value: 'food', label: 'Cibo e Bevande', icon: 'restaurant' },
-    { value: 'transport', label: 'Trasporti', icon: 'directions-car' },
-    { value: 'accommodation', label: 'Alloggio', icon: 'hotel' },
-    { value: 'entertainment', label: 'Intrattenimento', icon: 'movie' },
-    { value: 'shopping', label: 'Shopping', icon: 'shopping-bag' },
-    { value: 'health', label: 'Salute', icon: 'local-hospital' },
-    { value: 'health', label: 'Salute', icon: 'local-hospital' },
-    { value: 'business', label: 'Business', icon: 'business' },
-    { value: 'fuel', label: 'Carburante', icon: 'local-gas-station' },
-    { value: 'other', label: 'Altro', icon: 'more-horiz' },
+    { value: 'food', labelKey: 'categories.foodAndDrinks', icon: 'restaurant' },
+    { value: 'transport', labelKey: 'categories.transport', icon: 'directions-car' },
+    { value: 'accommodation', labelKey: 'categories.accommodation', icon: 'hotel' },
+    { value: 'entertainment', labelKey: 'categories.entertainment', icon: 'movie' },
+    { value: 'shopping', labelKey: 'categories.shopping', icon: 'shopping-bag' },
+    { value: 'health', labelKey: 'categories.health', icon: 'local-hospital' },
+    { value: 'business', labelKey: 'categories.business', icon: 'business' },
+    { value: 'fuel', labelKey: 'categories.fuel', icon: 'local-gas-station' },
+    { value: 'other', labelKey: 'categories.other', icon: 'more-horiz' },
   ];
 
   const currencies = [
@@ -103,7 +106,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
       const loadedExpense = await databaseManager.getExpenseById(expenseId);
 
       if (!loadedExpense) {
-        Alert.alert('Errore', 'Spesa non trovata');
+        Alert.alert(t('common.error'), t('expenseForm.expenseNotFound'));
         navigation.goBack();
         return;
       }
@@ -114,7 +117,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
       console.log('📊 ExpenseEditScreen - Loaded expense data:');
       console.log('  - merchant_name:', loadedExpense.merchant_name);
       console.log('  - notes:', loadedExpense.notes);
-      console.log('  - description:', loadedExpense.description);
+      console.log('  - description:', (loadedExpense as any).description);
 
       // Populate form fields
       setAmount(loadedExpense.amount.toString());
@@ -149,7 +152,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
       console.log('📊 Loaded expense for editing:', loadedExpense);
     } catch (error) {
       console.error('❌ Failed to load expense:', error);
-      Alert.alert('Errore', 'Impossibile caricare la spesa');
+      Alert.alert(t('common.error'), t('expenseForm.loadError'));
     } finally {
       setIsLoading(false);
     }
@@ -159,12 +162,12 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
     const newErrors: { [key: string]: string } = {};
 
     if (!merchantName.trim()) {
-      newErrors.merchantName = 'Il nome dell\'esercente è obbligatorio';
+      newErrors.merchantName = t('expenseForm.merchantRequired');
     }
 
     const amountNum = parseFloat(amount);
     if (isNaN(amountNum) || amountNum <= 0) {
-      newErrors.amount = 'Inserisci un importo valido';
+      newErrors.amount = t('expenseForm.amountRequired');
     }
 
     setErrors(newErrors);
@@ -205,8 +208,8 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
       syncManager.syncAll().catch(console.error);
 
       Alert.alert(
-        'Successo',
-        'Spesa aggiornata con successo!',
+        t('common.success'),
+        t('expenseForm.updateSuccess'),
         [
           {
             text: 'OK',
@@ -217,7 +220,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
 
     } catch (error) {
       console.error('❌ Failed to update expense:', error);
-      Alert.alert('Errore', 'Impossibile aggiornare la spesa');
+      Alert.alert(t('common.error'), t('expenseForm.updateError'));
     } finally {
       setIsSaving(false);
     }
@@ -246,7 +249,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
   };
 
   const formatDate = (date: Date): string => {
-    return date.toLocaleDateString('it-IT', {
+    return formatLocalizedDate(date, {
       weekday: 'short',
       year: 'numeric',
       month: 'short',
@@ -255,28 +258,34 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
   };
 
   const formatTime = (date: Date): string => {
-    return date.toLocaleTimeString('it-IT', {
+    return new Intl.DateTimeFormat(locale, {
       hour: '2-digit',
       minute: '2-digit'
-    });
+    }).format(date);
   };
 
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Caricamento spesa...</Text>
+        <Text style={styles.loadingText}>{t('expenseForm.loadingExpense')}</Text>
       </View>
     );
   }
 
+  const selectedCategory = categories.find(c => c.value === category);
+
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollContainer} keyboardShouldPersistTaps="handled">
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <ScrollView
+        style={styles.scrollContainer}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomSafePadding + 24 }]}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.form}>
           {/* Amount */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Importo *</Text>
+            <Text style={styles.label}>{t('expenseForm.amount')}</Text>
             <View style={styles.amountContainer}>
               <TextInput
                 style={[styles.amountInput, errors.amount && styles.inputError]}
@@ -298,7 +307,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
 
           {/* Merchant Name */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Esercente *</Text>
+            <Text style={styles.label}>{t('expenseForm.merchant')}</Text>
             <TextInput
               style={[styles.input, errors.merchantName && styles.inputError]}
               value={merchantName}
@@ -306,7 +315,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
                 setMerchantName(text);
                 setErrors(prev => ({ ...prev, merchantName: '' }));
               }}
-              placeholder="Nome dell'esercente"
+              placeholder={t('expenseForm.merchantPlaceholder')}
               placeholderTextColor="#999"
             />
             {errors.merchantName && <Text style={styles.errorText}>{errors.merchantName}</Text>}
@@ -314,12 +323,12 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
 
           {/* Merchant Address */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Indirizzo</Text>
+            <Text style={styles.label}>{t('expenseForm.address')}</Text>
             <TextInput
               style={styles.input}
               value={merchantAddress}
               onChangeText={setMerchantAddress}
-              placeholder="Indirizzo dell'esercente"
+              placeholder={t('expenseForm.addressPlaceholder')}
               placeholderTextColor="#999"
               multiline
             />
@@ -327,7 +336,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
 
           {/* Kilometers Input - Visible for generic use or specifically for fuel/transport */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Chilometri (Km)</Text>
+            <Text style={styles.label}>{t('expenseForm.kilometers')}</Text>
             <TextInput
               style={styles.input}
               value={kilometers}
@@ -340,18 +349,18 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
 
           {/* Category */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Categoria</Text>
+            <Text style={styles.label}>{t('expenseForm.category')}</Text>
             <TouchableOpacity
               style={styles.dateTimeButton}
               onPress={() => setShowCategoryPicker(true)}
             >
               <MaterialIcons
-                name={categories.find(c => c.value === category)?.icon || 'category'}
+                name={(selectedCategory?.icon || 'category') as keyof typeof MaterialIcons.glyphMap}
                 size={20}
                 color="#007AFF"
               />
               <Text style={styles.dateTimeText}>
-                {categories.find(c => c.value === category)?.label || 'Seleziona categoria'}
+                {selectedCategory ? t(selectedCategory.labelKey) : t('expenseForm.selectCategory')}
               </Text>
               <MaterialIcons name="keyboard-arrow-down" size={20} color="#666" />
             </TouchableOpacity>
@@ -359,7 +368,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
 
           {/* Date Picker */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Data Scontrino *</Text>
+            <Text style={styles.label}>{t('expenseForm.receiptDate')}</Text>
             <TouchableOpacity
               style={styles.dateTimeButton}
               onPress={() => setShowDatePicker(true)}
@@ -374,7 +383,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
 
           {/* Time Picker */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Orario Scontrino *</Text>
+            <Text style={styles.label}>{t('expenseForm.receiptTime')}</Text>
             <TouchableOpacity
               style={styles.dateTimeButton}
               onPress={() => setShowTimePicker(true)}
@@ -389,12 +398,12 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
 
           {/* Notes */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Note</Text>
+            <Text style={styles.label}>{t('expenseForm.notes')}</Text>
             <TextInput
               style={[styles.input, styles.notesInput]}
               value={notes}
               onChangeText={setNotes}
-              placeholder="Note aggiuntive..."
+              placeholder={t('expenseForm.notesPlaceholder')}
               placeholderTextColor="#999"
               multiline
               numberOfLines={4}
@@ -409,7 +418,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
                 { backgroundColor: expense.sync_status === 'synced' ? '#4CAF50' : expense.sync_status === 'pending' ? '#FF9800' : '#F44336' }
               ]} />
               <Text style={styles.syncStatusText}>
-                {expense.sync_status === 'synced' ? 'Sincronizzato' : expense.sync_status === 'pending' ? 'In attesa di sincronizzazione' : 'Errore di sincronizzazione'}
+                {expense.sync_status === 'synced' ? t('expenseForm.synced') : expense.sync_status === 'pending' ? t('expenseForm.pendingSync') : t('expenseForm.syncError')}
               </Text>
             </View>
           )}
@@ -425,7 +434,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
             ) : (
               <>
                 <MaterialIcons name="save" size={20} color="white" />
-                <Text style={styles.saveButtonText}>Salva Modifiche</Text>
+                <Text style={styles.saveButtonText}>{t('expenseForm.saveChanges')}</Text>
               </>
             )}
           </TouchableOpacity>
@@ -442,7 +451,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
           <View style={styles.modalOverlay}>
             <View style={styles.datePickerContainer}>
               <View style={styles.datePickerHeader}>
-                <Text style={styles.datePickerTitle}>Seleziona Data</Text>
+                <Text style={styles.datePickerTitle}>{t('expenseForm.selectDate')}</Text>
                 <TouchableOpacity onPress={() => setShowDatePicker(false)}>
                   <MaterialIcons name="close" size={24} color="#666" />
                 </TouchableOpacity>
@@ -454,7 +463,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
                   display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                   onChange={onDateChange}
                   maximumDate={new Date()}
-                  locale="it-IT"
+                  locale={locale}
                   textColor="#000000"
                   themeVariant="light"
                   style={styles.datePicker}
@@ -465,7 +474,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
                   style={styles.confirmButton}
                   onPress={() => setShowDatePicker(false)}
                 >
-                  <Text style={styles.confirmButtonText}>Conferma</Text>
+                  <Text style={styles.confirmButtonText}>{t('common.confirm')}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -483,7 +492,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
           <View style={styles.modalOverlay}>
             <View style={styles.datePickerContainer}>
               <View style={styles.datePickerHeader}>
-                <Text style={styles.datePickerTitle}>Seleziona Orario</Text>
+                <Text style={styles.datePickerTitle}>{t('expenseForm.selectTime')}</Text>
                 <TouchableOpacity onPress={() => setShowTimePicker(false)}>
                   <MaterialIcons name="close" size={24} color="#666" />
                 </TouchableOpacity>
@@ -494,7 +503,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
                   mode="time"
                   display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                   onChange={onTimeChange}
-                  locale="it-IT"
+                  locale={locale}
                   is24Hour={true}
                   textColor="#000000"
                   themeVariant="light"
@@ -506,7 +515,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
                   style={styles.confirmButton}
                   onPress={() => setShowTimePicker(false)}
                 >
-                  <Text style={styles.confirmButtonText}>Conferma</Text>
+                  <Text style={styles.confirmButtonText}>{t('common.confirm')}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -524,7 +533,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
           <View style={styles.modalOverlay}>
             <View style={styles.categoryPickerContainer}>
               <View style={styles.datePickerHeader}>
-                <Text style={styles.datePickerTitle}>Seleziona Valuta</Text>
+                <Text style={styles.datePickerTitle}>{t('expenseForm.selectCurrency')}</Text>
                 <TouchableOpacity onPress={() => setShowCurrencyPicker(false)}>
                   <MaterialIcons name="close" size={24} color="#666" />
                 </TouchableOpacity>
@@ -569,7 +578,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
           <View style={styles.modalOverlay}>
             <View style={styles.categoryPickerContainer}>
               <View style={styles.datePickerHeader}>
-                <Text style={styles.datePickerTitle}>Seleziona Categoria</Text>
+                <Text style={styles.datePickerTitle}>{t('expenseForm.selectCategory')}</Text>
                 <TouchableOpacity onPress={() => setShowCategoryPicker(false)}>
                   <MaterialIcons name="close" size={24} color="#666" />
                 </TouchableOpacity>
@@ -596,7 +605,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
                       styles.categoryItemText,
                       category === cat.value && styles.categoryItemTextSelected
                     ]}>
-                      {cat.label}
+                      {t(cat.labelKey)}
                     </Text>
                     {category === cat.value && (
                       <MaterialIcons name="check" size={24} color="#007AFF" />
@@ -630,6 +639,9 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   form: {
     padding: 20,

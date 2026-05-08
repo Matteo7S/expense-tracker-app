@@ -8,31 +8,29 @@ import {
   ActivityIndicator,
   Dimensions,
   StatusBar,
-  SafeAreaView,
   Platform,
   Animated,
-  ScrollView,
   BackHandler,
-  Modal,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DataVerificationModal, ExtractedData } from '../../components/DataVerificationModal';
 import { CameraView, CameraType, useCameraPermissions, CameraPictureOptions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
-import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as FileSystem from 'expo-file-system/legacy';
 import { MainStackParamList } from '../../navigation/MainNavigator';
-import { receiptService } from '../../services/receiptService';
 import { visionOCRService } from '../../services/visionOCRService';
-import { smartReceiptAnalyzer, SmartAnalysisResult, ExtractedAmount } from '../../services/smartReceiptAnalyzer';
+import { smartReceiptAnalyzer, SmartAnalysisResult } from '../../services/smartReceiptAnalyzer';
 import { databaseManager } from '../../services/database';
 import { syncManager } from '../../services/syncManager';
 import { triggerExpenseRefresh } from '../../hooks/useExpenseRefresh';
+import { toRelativeReceiptPath } from '../../utils/receiptPath';
+import { useI18n } from '../../i18n';
 
 type GenericLiveOCRScreenNavigationProp = StackNavigationProp<MainStackParamList, 'GenericLiveOCRCamera'>;
-type GenericLiveOCRScreenRouteProp = RouteProp<MainStackParamList, 'GenericLiveOCRCamera'>;
 
 const { width, height } = Dimensions.get('window');
 
@@ -54,8 +52,8 @@ const ACCURACY_THRESHOLD = 90;
 
 export function GenericLiveOCRScreen() {
   const navigation = useNavigation<GenericLiveOCRScreenNavigationProp>();
-  const route = useRoute<GenericLiveOCRScreenRouteProp>();
-  const { reportId } = route.params || {};
+  const { formatCurrency, t } = useI18n();
+  const insets = useSafeAreaInsets();
 
   // Camera states
   const [permission, requestPermission] = useCameraPermissions();
@@ -114,12 +112,7 @@ export function GenericLiveOCRScreen() {
       setOcrInitialized(isAvailable);
 
       if (!isAvailable) {
-        console.log('⚠️ Vision OCR not available, analysis disabled');
-        Alert.alert(
-          'OCR non disponibile',
-          'Il riconoscimento testo non è disponibile. Puoi comunque scattare foto e caricarle normalmente.',
-          [{ text: 'OK' }]
-        );
+        console.log('ℹ️ Vision OCR not available, continuing with manual verification flow');
       } else {
         console.log('✅ Vision OCR initialized successfully');
       }
@@ -215,42 +208,12 @@ export function GenericLiveOCRScreen() {
 
         console.log(`✅ Vision AI Analysis completed: ${accuracy.toFixed(1)}% accuracy`);
       } else {
-        // Fallback to AI OCR (upload and let backend process)
-        setAnalysisProgress({ progress: 20, stage: 'Caricamento per AI OCR...' });
-
-        Animated.timing(progressAnimation, {
-          toValue: 60,
-          duration: 1000,
-          useNativeDriver: false,
-        }).start();
-
-        setAnalysisProgress({ progress: 80, stage: 'Invio al server AI...' });
-
-        Animated.timing(progressAnimation, {
-          toValue: 90,
-          duration: 500,
-          useNativeDriver: false,
-        }).start();
-
-        // For AI OCR fallback, we assume good quality and proceed directly
-        const analysis: OCRAnalysis = {
-          text: 'Analisi tramite AI OCR del backend',
-          confidence: 0.85, // Default good confidence for AI
-          accuracy: 95, // Assume AI OCR has good accuracy
-          timestamp: Date.now(),
-          status: 'success'
-        };
-
-        setOcrAnalysis(analysis);
-        setAnalysisProgress({ progress: 100, stage: 'Pronto per invio AI' });
-
-        Animated.timing(progressAnimation, {
-          toValue: 100,
-          duration: 300,
-          useNativeDriver: false,
-        }).start();
-
-        console.log('✅ Ready for AI OCR processing via backend');
+        setShowAnalysis(false);
+        setAnalysisProgress(null);
+        setOcrAnalysis(null);
+        progressAnimation.setValue(0);
+        console.log('ℹ️ OCR unavailable; skipping analysis and using manual verification flow');
+        return;
       }
 
     } catch (error) {
@@ -292,7 +255,7 @@ export function GenericLiveOCRScreen() {
       }
     } catch (error) {
       console.error('Error taking picture:', error);
-      Alert.alert('Errore', 'Impossibile scattare la foto');
+      Alert.alert(t('common.error'), t('scanner.takePictureError'));
     }
   };
 
@@ -403,14 +366,7 @@ export function GenericLiveOCRScreen() {
     try {
       console.log('💾 Saving confirmed data to local database...', confirmedData);
 
-      let targetReportId: string;
-      if (reportId) {
-        console.log('📝 Using provided reportId as local database ID:', reportId);
-        targetReportId = reportId;
-      } else {
-        console.log('📋 Using generic expense report');
-        targetReportId = await databaseManager.getOrCreateGenericExpenseReport();
-      }
+      const targetReportId = await databaseManager.getDefaultReportId();
 
       console.log('📝 Saving receipt to local report ID:', targetReportId);
 
@@ -449,7 +405,7 @@ export function GenericLiveOCRScreen() {
         category,
         receipt_date: confirmedData.date,
         receipt_time: confirmedData.time,
-        receipt_image_path: permanentImagePath, // ✅ Path permanente dell'immagine
+        receipt_image_path: toRelativeReceiptPath(permanentImagePath),
         extracted_data: JSON.stringify(extractedDataForSaving),
         notes: smartAnalysisAccuracy > 0 ? `Precisione OCR: ${smartAnalysisAccuracy}%` : undefined,
         is_archived: false,
@@ -471,15 +427,12 @@ export function GenericLiveOCRScreen() {
       });
 
       // Mostra messaggio di successo con Alert
-      const isGenericReport = !reportId;
-      const reportMessage = isGenericReport
-        ? 'nella nota spese generica'
-        : 'nella nota spese selezionata';
-
-      const message = `Lo scontrino è stato salvato ${reportMessage}${confirmedData.amount ? ` con importo €${confirmedData.amount.toFixed(2)}` : ''}.`;
+      const message = confirmedData.amount
+        ? `${t('scanner.receiptSavedTitle')} ${formatCurrency(confirmedData.amount, confirmedData.currency || 'EUR')}.`
+        : t('scanner.receiptSavedTitle');
 
       Alert.alert(
-        'Scontrino Salvato!',
+        t('scanner.receiptSavedTitle'),
         message,
         [{
           text: 'OK',
@@ -497,8 +450,8 @@ export function GenericLiveOCRScreen() {
     } catch (error) {
       console.error('❌ Error saving confirmed data:', error);
       Alert.alert(
-        'Errore',
-        'Si è verificato un errore durante il salvataggio dello scontrino. Riprova.',
+        t('common.error'),
+        t('scanner.saveReceiptError'),
         [{ text: 'OK' }]
       );
     } finally {
@@ -514,7 +467,7 @@ export function GenericLiveOCRScreen() {
 
   const goBack = () => {
     // Navigate to ExpenseReports screen in the tab navigator
-    navigation.navigate('ExpenseReportsTabs', { screen: 'ExpenseReports' });
+    navigation.navigate('ExpenseReportsTabs');
   };
 
   const pickImage = async () => {
@@ -538,7 +491,7 @@ export function GenericLiveOCRScreen() {
       }
     } catch (error) {
       console.error('Error picking image:', error);
-      Alert.alert('Errore', 'Impossibile selezionare il file');
+      Alert.alert(t('common.error'), t('scanner.pickFileError'));
     }
   };
 
@@ -554,20 +507,20 @@ export function GenericLiveOCRScreen() {
           <TouchableOpacity style={styles.webBackButton} onPress={goBack}>
             <MaterialIcons name="arrow-back" size={24} color="#007AFF" />
           </TouchableOpacity>
-          <Text style={styles.webTitle}>Carica Scontrino con OCR</Text>
+          <Text style={styles.webTitle}>{t('scanner.uploadReceiptOcr')}</Text>
         </View>
 
         {!showPreview ? (
           <View style={styles.webUploadContainer}>
             <MaterialIcons name="receipt" size={80} color="#ccc" />
-            <Text style={styles.webUploadTitle}>Seleziona Scontrino</Text>
+            <Text style={styles.webUploadTitle}>{t('scanner.selectReceipt')}</Text>
             <Text style={styles.webUploadText}>
-              Seleziona un'immagine dello scontrino dal tuo dispositivo
+              {t('scanner.selectReceiptDescription')}
             </Text>
 
             <TouchableOpacity style={styles.webUploadButton} onPress={pickImage}>
               <MaterialIcons name="file-upload" size={24} color="white" />
-              <Text style={styles.webUploadButtonText}>Scegli File</Text>
+              <Text style={styles.webUploadButtonText}>{t('scanner.chooseFile')}</Text>
             </TouchableOpacity>
           </View>
         ) : null}
@@ -580,7 +533,7 @@ export function GenericLiveOCRScreen() {
     return (
       <View style={styles.permissionContainer}>
         <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.permissionText}>Caricamento...</Text>
+        <Text style={styles.permissionText}>{t('common.loading')}</Text>
       </View>
     );
   }
@@ -590,9 +543,9 @@ export function GenericLiveOCRScreen() {
       <View style={styles.permissionContainer}>
         <MaterialIcons name="text-fields" size={64} color="#007AFF" />
         <ActivityIndicator size="large" color="#007AFF" style={{ marginTop: 20 }} />
-        <Text style={styles.permissionTitle}>Inizializzazione Scanner AI</Text>
+        <Text style={styles.permissionTitle}>{t('scanner.initializingAi')}</Text>
         <Text style={styles.permissionText}>
-          Configurazione del riconoscimento testo in corso...
+          {t('scanner.initializingAiDescription')}
         </Text>
       </View>
     );
@@ -602,12 +555,12 @@ export function GenericLiveOCRScreen() {
     return (
       <View style={styles.permissionContainer}>
         <MaterialIcons name="camera-alt" size={64} color="#ccc" />
-        <Text style={styles.permissionTitle}>Accesso alla Fotocamera</Text>
+        <Text style={styles.permissionTitle}>{t('scanner.cameraAccess')}</Text>
         <Text style={styles.permissionText}>
-          Questa app ha bisogno dell'accesso alla fotocamera per scansionare gli scontrini
+          {t('scanner.cameraAccessDescription')}
         </Text>
         <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
-          <Text style={styles.permissionButtonText}>Concedi Accesso</Text>
+          <Text style={styles.permissionButtonText}>{t('scanner.grantAccess')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -616,12 +569,12 @@ export function GenericLiveOCRScreen() {
   // Analysis screen with progress
   if (showAnalysis && analysisProgress) {
     return (
-      <SafeAreaView style={styles.analysisContainer}>
+      <SafeAreaView style={styles.analysisContainer} edges={['left', 'right']}>
         <StatusBar hidden />
 
         {/* Analysis Header */}
-        <View style={styles.analysisHeader}>
-          <Text style={styles.analysisTitle}>Analisi AI</Text>
+        <View style={[styles.analysisHeader, { paddingTop: Math.max(insets.top, 24) + 12 }]}>
+          <Text style={styles.analysisTitle}>{t('scanner.aiAnalysis')}</Text>
           <Text style={styles.analysisSubtitle}>{analysisProgress.stage}</Text>
         </View>
 
@@ -659,7 +612,7 @@ export function GenericLiveOCRScreen() {
 
         {/* Analysis Results */}
         {ocrAnalysis && analysisProgress.progress === 100 && (
-          <View style={styles.resultsContainer}>
+          <View style={[styles.resultsContainer, { paddingBottom: Math.max(insets.bottom, 16) + 20 }]}>
             <View style={styles.accuracyIndicator}>
               <View style={[
                 styles.accuracyCircle,
@@ -673,7 +626,7 @@ export function GenericLiveOCRScreen() {
                 styles.accuracyLabel,
                 { color: ocrAnalysis.accuracy >= ACCURACY_THRESHOLD ? '#4CAF50' : '#FF9800' }
               ]}>
-                {ocrAnalysis.accuracy >= ACCURACY_THRESHOLD ? 'Qualità Ottima' : 'Qualità Bassa'}
+                {ocrAnalysis.accuracy >= ACCURACY_THRESHOLD ? t('scanner.excellentQuality') : t('scanner.lowQuality')}
               </Text>
             </View>
 
@@ -683,7 +636,7 @@ export function GenericLiveOCRScreen() {
                 onPress={retakePicture}
               >
                 <MaterialIcons name="camera-alt" size={24} color="#FF9800" />
-                <Text style={styles.retryButtonText}>Riprova</Text>
+                <Text style={styles.retryButtonText}>{t('scanner.retry')}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -697,7 +650,7 @@ export function GenericLiveOCRScreen() {
                   <MaterialIcons name="check" size={24} color="white" />
                 )}
                 <Text style={styles.confirmButtonText}>
-                  {isUploading ? 'Caricamento...' : 'Conferma'}
+                  {isUploading ? t('common.loading') : t('common.confirm')}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -712,8 +665,8 @@ export function GenericLiveOCRScreen() {
           onConfirm={handleConfirmData}
           onCancel={handleCancelVerification}
           isLoading={isUploading}
-          title="Verifica Dati Scontrino"
-          subtitle={verificationData.amount ? "Controlla e modifica i dati rilevati prima di salvare" : "Inserisci i dati dello scontrino"}
+          title={t('scanner.verifyReceiptData')}
+          subtitle={verificationData.amount ? t('scanner.verifyReceiptDataSubtitle') : t('scanner.enterReceiptDataSubtitle')}
         />
       </SafeAreaView>
     );
@@ -723,7 +676,7 @@ export function GenericLiveOCRScreen() {
   // Preview screen (before analysis)
   if (showPreview && capturedImage && !showAnalysis) {
     return (
-      <SafeAreaView style={styles.previewContainer}>
+      <SafeAreaView style={styles.previewContainer} edges={['left', 'right']}>
         <StatusBar hidden />
 
         <View style={styles.imageContainer}>
@@ -734,10 +687,10 @@ export function GenericLiveOCRScreen() {
           />
         </View>
 
-        <View style={styles.previewControls}>
-          <Text style={styles.previewTitle}>Anteprima Scontrino</Text>
+        <View style={[styles.previewControls, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}>
+          <Text style={styles.previewTitle}>{t('scanner.previewTitle')}</Text>
           <Text style={styles.previewSubtitle}>
-            Vuoi tenere questa foto?
+            {t('scanner.previewQuestion')}
           </Text>
 
           <View style={styles.buttonRow}>
@@ -746,7 +699,7 @@ export function GenericLiveOCRScreen() {
               onPress={retakePicture}
             >
               <MaterialIcons name="close" size={24} color="#ff4444" />
-              <Text style={styles.discardButtonText}>Scarta</Text>
+              <Text style={styles.discardButtonText}>{t('scanner.discard')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -754,7 +707,7 @@ export function GenericLiveOCRScreen() {
               onPress={confirmAndUpload}
             >
               <MaterialIcons name="check" size={24} color="white" />
-              <Text style={styles.keepButtonText}>Tieni</Text>
+              <Text style={styles.keepButtonText}>{t('scanner.keep')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -767,8 +720,8 @@ export function GenericLiveOCRScreen() {
           onConfirm={handleConfirmData}
           onCancel={handleCancelVerification}
           isLoading={isUploading}
-          title="Verifica Dati Scontrino"
-          subtitle={verificationData.amount ? "Controlla e modifica i dati rilevati prima di salvare" : "Inserisci i dati dello scontrino"}
+          title={t('scanner.verifyReceiptData')}
+          subtitle={verificationData.amount ? t('scanner.verifyReceiptDataSubtitle') : t('scanner.enterReceiptDataSubtitle')}
         />
       </SafeAreaView>
     );
@@ -784,52 +737,55 @@ export function GenericLiveOCRScreen() {
         style={styles.camera}
         facing={facing}
         ratio="16:9"
-      >
-        {/* Top Bar */}
-        <View style={styles.topBar}>
-          <TouchableOpacity style={styles.backButton} onPress={goBack}>
-            <MaterialIcons name="arrow-back" size={24} color="white" />
-          </TouchableOpacity>
+      />
 
-          <Text style={styles.titleText}>Scanner AI</Text>
-
-          <TouchableOpacity style={styles.flipButton} onPress={toggleCameraFacing}>
-            <MaterialIcons name="flip-camera-ios" size={28} color="white" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Camera Overlay */}
-        <View style={styles.overlay}>
-          <View style={styles.scanningFrame}>
-            <View style={[styles.corner, styles.topLeft]} />
-            <View style={[styles.corner, styles.topRight]} />
-            <View style={[styles.corner, styles.bottomLeft]} />
-            <View style={[styles.corner, styles.bottomRight]} />
-          </View>
-
-          <Text style={styles.instructionText}>
-            {ocrInitialized
-              ? 'Inquadra lo scontrino e premi il pulsante per scattare e analizzare'
-              : 'Inquadra lo scontrino e premi il pulsante per scattare'
-            }
-          </Text>
-        </View>
-
-        {/* Bottom Controls */}
-        <View style={styles.bottomControls}>
-          <TouchableOpacity
-            style={styles.captureButton}
-            onPress={takePicture}
-          >
-            <View style={styles.captureButtonInner} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Gallery Button */}
-        <TouchableOpacity style={styles.galleryButton} onPress={pickImage}>
-          <MaterialIcons name="photo-library" size={30} color="white" />
+      {/* Top Bar */}
+      <View style={[styles.topBar, { paddingTop: Math.max(insets.top, 24) + 10 }]}>
+        <TouchableOpacity style={styles.backButton} onPress={goBack}>
+          <MaterialIcons name="arrow-back" size={24} color="white" />
         </TouchableOpacity>
-      </CameraView>
+
+        <Text style={styles.titleText}>Scanner AI</Text>
+
+        <TouchableOpacity style={styles.flipButton} onPress={toggleCameraFacing}>
+          <MaterialIcons name="flip-camera-ios" size={28} color="white" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Camera Overlay */}
+      <View style={styles.overlay} pointerEvents="none">
+        <View style={styles.scanningFrame}>
+          <View style={[styles.corner, styles.topLeft]} />
+          <View style={[styles.corner, styles.topRight]} />
+          <View style={[styles.corner, styles.bottomLeft]} />
+          <View style={[styles.corner, styles.bottomRight]} />
+        </View>
+
+        <Text style={styles.instructionText}>
+          {ocrInitialized
+            ? t('scanner.frameInstructionAi')
+            : t('scanner.frameInstructionSimple')
+          }
+        </Text>
+      </View>
+
+      {/* Bottom Controls */}
+      <View style={[styles.bottomControls, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}>
+        <TouchableOpacity
+          style={styles.captureButton}
+          onPress={takePicture}
+        >
+          <View style={styles.captureButtonInner} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Gallery Button */}
+      <TouchableOpacity
+        style={[styles.galleryButton, { bottom: Math.max(insets.bottom, 16) + 44 }]}
+        onPress={pickImage}
+      >
+        <MaterialIcons name="photo-library" size={30} color="white" />
+      </TouchableOpacity>
 
       {/* Modal di verifica dati - posizionata fuori dal CameraView per evitare sovrapposizioni */}
       <DataVerificationModal
@@ -839,8 +795,8 @@ export function GenericLiveOCRScreen() {
         onConfirm={handleConfirmData}
         onCancel={handleCancelVerification}
         isLoading={isUploading}
-        title="Verifica Dati Scontrino"
-        subtitle={verificationData.amount ? "Controlla e modifica i dati rilevati prima di salvare" : "Inserisci i dati dello scontrino"}
+        title={t('scanner.verifyReceiptData')}
+        subtitle={verificationData.amount ? t('scanner.verifyReceiptDataSubtitle') : t('scanner.enterReceiptDataSubtitle')}
       />
 
     </View>
@@ -853,7 +809,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'black',
   },
   camera: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
   },
   permissionContainer: {
     flex: 1,
@@ -892,7 +848,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 50,
     paddingHorizontal: 20,
     paddingBottom: 20,
     backgroundColor: 'rgba(0, 0, 0, 0.3)',
@@ -972,7 +927,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   bottomControls: {
-    paddingBottom: 50,
     paddingHorizontal: 20,
     alignItems: 'center',
   },
@@ -994,7 +948,6 @@ const styles = StyleSheet.create({
   },
   galleryButton: {
     position: 'absolute',
-    bottom: 70,
     left: 20,
     width: 50,
     height: 50,
@@ -1079,7 +1032,6 @@ const styles = StyleSheet.create({
   },
   analysisHeader: {
     backgroundColor: 'white',
-    paddingTop: 50,
     paddingHorizontal: 20,
     paddingBottom: 20,
     borderBottomWidth: 1,

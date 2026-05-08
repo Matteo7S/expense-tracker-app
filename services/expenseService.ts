@@ -47,6 +47,56 @@ interface ReceiptAnalysisResponse {
 }
 
 class ExpenseService {
+  private buildExpenseFingerprint(expense: {
+    amount?: number | null;
+    category?: string | null;
+    date?: string | null;
+    merchant?: string | null;
+    notes?: string | null;
+  }): string {
+    const normalizedAmount = Number(expense.amount || 0).toFixed(2);
+    const normalizedCategory = (expense.category || 'other').trim().toLowerCase();
+    const normalizedDate = (expense.date || '').trim().split('T')[0];
+    const normalizedMerchant = (expense.merchant || '').trim().toLowerCase();
+    const normalizedNotes = (expense.notes || '').trim().toLowerCase();
+
+    return [
+      normalizedAmount,
+      normalizedCategory,
+      normalizedDate,
+      normalizedMerchant,
+      normalizedNotes
+    ].join('|');
+  }
+
+  private deduplicateExpenses(expenses: Expense[]): Expense[] {
+    const seenIds = new Set<string>();
+    const seenFingerprints = new Set<string>();
+
+    return expenses.filter((expense) => {
+      if (seenIds.has(expense.id)) {
+        return false;
+      }
+
+      const fingerprint = this.buildExpenseFingerprint({
+        amount: expense.amount,
+        category: expense.category,
+        date: expense.date,
+        merchant: expense.merchant || expense.description,
+        notes: expense.note || expense.description
+      });
+
+      if (seenFingerprints.has(fingerprint)) {
+        console.log('🧹 [getExpenses] Skipping duplicate expense by fingerprint:', expense.id);
+        return false;
+      }
+
+      seenIds.add(expense.id);
+      seenFingerprints.add(fingerprint);
+      return true;
+    });
+  }
+
   async getExpenses(reportId: string, includeArchived: boolean = false): Promise<Expense[]> {
     try {
       // Da ora in poi reportId è sempre l'ID locale del database
@@ -97,39 +147,76 @@ class ExpenseService {
               const existsLocally = localExpenses.find(le => le.server_id === se.id || le.id === se.id);
               if (!existsLocally) {
                 try {
-                  console.log('🔄 Pull sync: saving server expense locally:', se.id);
-                  const newId = await databaseManager.createExpense({
-                    expense_report_id: reportId, // use the requested reportId so it links locally
-                    amount: se.amount,
-                    currency: se.currency || 'EUR',
-                    merchant_name: se.merchant || se.description || '',
-                    merchant_address: se.location || '',
-                    merchant_vat: se.vat || '',
-                    category: se.category || 'other',
-                    receipt_date: se.date || (se.createdAt ? new Date(se.createdAt).toISOString() : new Date().toISOString()),
-                    receipt_time: '00:00',
-                    notes: se.note || se.description || '',
-                    is_archived: false,
-                    server_id: se.id,
-                    sync_status: 'synced',
-                    kilometers: (se as any).kilometers || null,
-                    fuel_liters: (se as any).fuelLiters || null,
-                    fuel_type: (se as any).fuelType || null,
-                    receipt_image_path: se.receiptImages?.[0] || null,
-                    receipt_image_url: se.receiptImages?.[0] || null
-                  } as any);
+                  const matchingLocalExpense = localExpenses.find((le) => {
+                    if (le.server_id || le.is_archived) {
+                      return false;
+                    }
 
-                  // Remove from sync queue to avoid re-pushing
-                  const syncQueue = await databaseManager.getSyncQueue();
-                  const queueItem = syncQueue.find(q => q.record_id === newId);
-                  if (queueItem) {
-                    await databaseManager.removeSyncQueueItem(queueItem.id);
+                    return this.buildExpenseFingerprint({
+                      amount: le.amount,
+                      category: le.category,
+                      date: le.receipt_date,
+                      merchant: le.merchant_name || le.notes,
+                      notes: le.notes
+                    }) === this.buildExpenseFingerprint({
+                      amount: se.amount,
+                      category: se.category,
+                      date: se.date || (se.createdAt ? new Date(se.createdAt).toISOString() : ''),
+                      merchant: se.merchant || se.description,
+                      notes: se.note || se.description
+                    });
+                  });
+
+                  const serverArchived = Boolean((se as any).isArchived ?? (se as any).archived ?? false);
+
+                  if (matchingLocalExpense) {
+                    console.log('🔗 Pull sync: linking server expense to existing local record:', {
+                      localId: matchingLocalExpense.id,
+                      serverId: se.id
+                    });
+
+                    await databaseManager.updateExpenseLocal(matchingLocalExpense.id, {
+                      server_id: se.id,
+                      sync_status: 'synced',
+                      last_sync: new Date().toISOString(),
+                      receipt_image_url: se.receiptImages?.[0] || matchingLocalExpense.receipt_image_url || null,
+                      receipt_image_path: matchingLocalExpense.receipt_image_path || se.receiptImages?.[0] || null
+                    } as any);
+                  } else {
+                    console.log('🔄 Pull sync: saving server expense locally:', se.id, 'archived:', serverArchived);
+                    const newId = await databaseManager.createExpense({
+                      expense_report_id: reportId, // use the requested reportId so it links locally
+                      amount: se.amount,
+                      currency: se.currency || 'EUR',
+                      merchant_name: se.merchant || se.description || '',
+                      merchant_address: se.location || '',
+                      merchant_vat: se.vat || '',
+                      category: se.category || 'other',
+                      receipt_date: se.date || (se.createdAt ? new Date(se.createdAt).toISOString() : new Date().toISOString()),
+                      receipt_time: '00:00',
+                      notes: se.note || se.description || '',
+                      is_archived: serverArchived,
+                      server_id: se.id,
+                      sync_status: 'synced',
+                      kilometers: (se as any).kilometers || null,
+                      fuel_liters: (se as any).fuelLiters || null,
+                      fuel_type: (se as any).fuelType || null,
+                      receipt_image_path: se.receiptImages?.[0] || null,
+                      receipt_image_url: se.receiptImages?.[0] || null
+                    } as any);
+
+                    // Remove from sync queue to avoid re-pushing
+                    const syncQueue = await databaseManager.getSyncQueue();
+                    const queueItem = syncQueue.find(q => q.record_id === newId);
+                    if (queueItem) {
+                      await databaseManager.removeSyncQueueItem(queueItem.id);
+                    }
+
+                    hasNewItems = true;
                   }
 
-                  hasNewItems = true;
-
-                  // Fix: only push to API formats if not already there, avoiding duplicate map refs
-                  if (!apiFormatExpenses.find(a => a.id === se.id)) {
+                  // Only add to visible list if not archived on server (new local record inherits server state)
+                  if (!serverArchived && !apiFormatExpenses.find(a => a.id === se.id)) {
                     apiFormatExpenses.push({
                       ...se,
                       currency: se.currency || 'EUR'
@@ -137,25 +224,32 @@ class ExpenseService {
                   }
                 } catch (e) { console.error('❌ Silent sync insert failed for', se.id, e); }
               } else {
-                // Expense exists locally — update key fields from server (receipt_date, amount, etc.)
+                // Expense exists locally — update non-archive fields from server (amount/date corrections).
+                // Archive state: app wins. If local differs from server, enqueue update to push local state up.
                 try {
+                  const serverArchived = Boolean((se as any).isArchived ?? (se as any).archived ?? false);
                   const updates: any = {};
                   if (se.date && !existsLocally.receipt_date) updates.receipt_date = se.date;
                   if (se.amount && existsLocally.amount !== se.amount) updates.amount = se.amount;
                   if (se.merchant && !existsLocally.merchant_name) updates.merchant_name = se.merchant;
-                  if (!se.archived && existsLocally.is_archived && existsLocally.sync_status === 'synced') updates.is_archived = false;
 
                   if (Object.keys(updates).length > 0) {
                     await databaseManager.updateExpense(existsLocally.id, updates);
                   }
 
-                  // If unarchived, add to visible list
-                  if (updates.is_archived === false && !apiFormatExpenses.find(a => a.id === se.id)) {
-                    apiFormatExpenses.push({
-                      ...se,
-                      currency: se.currency || 'EUR'
-                    } as any);
-                    hasNewItems = true;
+                  // App-wins reconcile for archive state
+                  if (serverArchived !== Boolean(existsLocally.is_archived) && existsLocally.sync_status === 'synced' && existsLocally.server_id) {
+                    console.log('🔁 App-wins reconcile: pushing local archive state to server:', {
+                      id: existsLocally.id,
+                      localArchived: Boolean(existsLocally.is_archived),
+                      serverArchived
+                    });
+                    await databaseManager.addToSyncQueue({
+                      table_name: 'expenses',
+                      record_id: existsLocally.id,
+                      action: 'update',
+                      data: existsLocally
+                    });
                   }
                 } catch (e) { console.error('❌ Failed to update local expense from server', se.id, e); }
               }
@@ -175,7 +269,7 @@ class ExpenseService {
         console.warn('⚠️ Silent pull sync failed (offline or server error)');
       }
 
-      return apiFormatExpenses as Expense[];
+      return this.deduplicateExpenses(apiFormatExpenses as Expense[]);
     } catch (error) {
       console.error('❌ Error loading expenses:', error);
       return [];

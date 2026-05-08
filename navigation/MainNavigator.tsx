@@ -2,9 +2,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { MaterialIcons } from '@expo/vector-icons';
-import { ExpenseReportsScreen } from '../screens/main/ExpenseReportsScreen';
-import { ExpenseReportDetailScreen } from '../screens/main/ExpenseReportDetailScreen';
-import { CreateExpenseReportScreen } from '../screens/main/CreateExpenseReportScreen';
+import { ExpensesScreen } from '../screens/main/ExpensesScreen';
 import { ExpenseDetailScreen } from '../screens/main/ExpenseDetailScreen';
 import { CreateExpenseScreen } from '../screens/main/CreateExpenseScreen';
 import { ExpenseEditScreen } from '../screens/main/ExpenseEditScreen';
@@ -14,27 +12,22 @@ import { ChangePasswordScreen } from '../screens/main/ChangePasswordScreen';
 import { GenericScanScreen } from '../screens/main/GenericScanScreen';
 import { GenericLiveOCRScreen } from '../screens/main/GenericLiveOCRScreen';
 import { ArchivedExpensesScreen } from '../screens/main/ArchivedExpensesScreen';
-import { ArchivedExpenseReportsScreen } from '../screens/main/ArchivedExpenseReportsScreen';
-import { ExpenseReport } from '../types';
+import { useI18n } from '../i18n';
 
 export type MainStackParamList = {
   ExpenseReportsTabs: undefined;
-  ExpenseReportDetail: { reportId: string };
-  CreateExpenseReport: undefined;
-  EditExpenseReport: { report: ExpenseReport };
   ExpenseDetail: { expenseId: string };
-  CreateExpense: { reportId: string };
+  CreateExpense: undefined;
   EditExpense: { expenseId: string };
-  Camera: { reportId: string };
+  Camera: undefined;
   GenericCamera: undefined;
-  GenericLiveOCRCamera: { reportId?: string };
+  GenericLiveOCRCamera: undefined;
   ArchivedExpenses: undefined;
-  ArchivedExpenseReports: undefined;
   ChangePassword: undefined;
 };
 
 export type TabParamList = {
-  ExpenseReports: undefined;
+  Expenses: undefined;
   GenericScan: undefined;
   Profile: undefined;
 };
@@ -42,15 +35,9 @@ export type TabParamList = {
 const Tab = createBottomTabNavigator<TabParamList>();
 const Stack = createStackNavigator<MainStackParamList>();
 
-function ExpenseReportsTab() {
-  return <ExpenseReportsScreen />;
-}
-
-function ProfileTab() {
-  return <ProfileScreen />;
-}
-
 function TabNavigator() {
+  const { t } = useI18n();
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -58,11 +45,11 @@ function TabNavigator() {
           let iconName: keyof typeof MaterialIcons.glyphMap;
           let iconSize = size;
 
-          if (route.name === 'ExpenseReports') {
+          if (route.name === 'Expenses') {
             iconName = 'receipt-long';
           } else if (route.name === 'GenericScan') {
             iconName = 'camera-alt';
-            iconSize = size + 8; // Icona più grande per il pulsante centrale
+            iconSize = size + 8;
           } else if (route.name === 'Profile') {
             iconName = 'person';
           } else {
@@ -76,93 +63,75 @@ function TabNavigator() {
         headerShown: false,
       })}
     >
-      <Tab.Screen 
-        name="ExpenseReports" 
-        component={ExpenseReportsTab}
-        options={{ title: 'Note Spese' }}
+      <Tab.Screen
+        name="Expenses"
+        component={ExpensesScreen}
+        options={{ title: t('navigation.expenses') }}
       />
-      <Tab.Screen 
-        name="GenericScan" 
+      <Tab.Screen
+        name="GenericScan"
         component={GenericScanScreen}
-        options={{ title: 'Scansiona' }}
+        options={{ title: t('navigation.scan') }}
       />
-      <Tab.Screen 
-        name="Profile" 
-        component={ProfileTab}
-        options={{ title: 'Account' }}
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{ title: t('navigation.account') }}
       />
     </Tab.Navigator>
   );
 }
 
 export function MainNavigator() {
+  const { t } = useI18n();
+
   return (
     <Stack.Navigator>
-      <Stack.Screen 
-        name="ExpenseReportsTabs" 
+      <Stack.Screen
+        name="ExpenseReportsTabs"
         component={TabNavigator}
         options={{ headerShown: false }}
       />
-      <Stack.Screen 
-        name="ExpenseReportDetail" 
-        component={ExpenseReportDetailScreen}
-        options={{ title: 'Dettaglio Nota Spese' }}
-      />
-      <Stack.Screen 
-        name="CreateExpenseReport" 
-        component={CreateExpenseReportScreen}
-        options={{ title: 'Nuova Nota Spese' }}
-      />
-      <Stack.Screen 
-        name="EditExpenseReport" 
-        component={CreateExpenseReportScreen}
-        options={{ title: 'Modifica Nota Spese' }}
-      />
-      <Stack.Screen 
-        name="CreateExpense" 
+      <Stack.Screen
+        name="CreateExpense"
         component={CreateExpenseScreen}
-        options={{ title: 'Nuova Spesa' }}
+        options={{ title: t('navigation.newExpense') }}
       />
-      <Stack.Screen 
-        name="EditExpense" 
+      <Stack.Screen
+        name="EditExpense"
         component={ExpenseEditScreen}
-        options={{ title: 'Modifica Spesa' }}
+        options={{ title: t('navigation.editExpense') }}
       />
-      <Stack.Screen 
-        name="ExpenseDetail" 
+      <Stack.Screen
+        name="ExpenseDetail"
         component={ExpenseDetailScreen}
-        options={{ title: 'Dettaglio Spesa' }}
+        options={{ title: t('navigation.expenseDetail') }}
       />
-      <Stack.Screen 
-        name="Camera" 
+      <Stack.Screen
+        name="Camera"
         component={CameraScreen}
-        options={{ title: 'Scansiona Scontrino' }}
+        options={{ title: t('navigation.scanReceipt') }}
       />
-      <Stack.Screen 
-        name="GenericCamera" 
+      <Stack.Screen
+        name="GenericCamera"
         component={CameraScreen}
-        options={{ title: 'Scansione Generica' }}
+        options={{ title: t('navigation.genericScan') }}
       />
-      <Stack.Screen 
-        name="GenericLiveOCRCamera" 
+      <Stack.Screen
+        name="GenericLiveOCRCamera"
         component={GenericLiveOCRScreen}
-        options={{ 
+        options={{
           headerShown: false,
-          gestureEnabled: false // Disabilita il gesture di back per evitare conflitti
+          gestureEnabled: false,
         }}
       />
-      <Stack.Screen 
-        name="ArchivedExpenses" 
+      <Stack.Screen
+        name="ArchivedExpenses"
         component={ArchivedExpensesScreen}
         options={{ headerShown: false }}
       />
-      <Stack.Screen 
-        name="ArchivedExpenseReports" 
-        component={ArchivedExpenseReportsScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen 
-        name="ChangePassword" 
+      <Stack.Screen
+        name="ChangePassword"
         component={ChangePasswordScreen}
         options={{ headerShown: false }}
       />

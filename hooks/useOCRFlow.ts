@@ -7,6 +7,7 @@ import { databaseManager } from '../services/database';
 import { ocrService, OCRResult } from '../services/ocrService';
 import * as FileSystem from 'expo-file-system/legacy';
 import { syncManager } from '../services/syncManager';
+import { toRelativeReceiptPath } from '../utils/receiptPath';
 
 export interface OCRFlowState {
   isProcessing: boolean;
@@ -61,7 +62,7 @@ export function useOCRFlow() {
         category: ocrResult.category || 'Other',
         receipt_date: ocrResult.date?.value || new Date().toISOString().split('T')[0],
         receipt_time: ocrResult.time?.value || new Date().toTimeString().split(' ')[0],
-        receipt_image_path: permanentImagePath,
+        receipt_image_path: toRelativeReceiptPath(permanentImagePath),
         receipt_image_url: undefined, // Sarà impostato durante la sincronizzazione
         receipt_thumbnail_url: undefined, // Sarà impostato durante la sincronizzazione
         extracted_data: JSON.stringify({

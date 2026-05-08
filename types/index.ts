@@ -44,6 +44,7 @@ export interface Expense {
   kilometers?: number;
   fuelLiters?: number;
   fuelType?: string;
+  isArchived?: boolean;
 }
 
 export interface ReceiptInfo {
@@ -81,7 +82,7 @@ export interface CreateExpenseReportData {
 }
 
 export interface CreateExpenseData {
-  reportId: string;
+  reportId?: string;
   description: string;
   amount: number;
   category: ExpenseCategory;

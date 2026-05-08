@@ -23,7 +23,7 @@ export interface ExpenseReport {
   updated_at: string;
   is_archived: boolean;
   server_id?: string; // ID sul server remoto
-  sync_status: 'pending' | 'synced' | 'error';
+  sync_status: 'pending' | 'synced' | 'error' | 'failed';
   last_sync?: string;
 }
 
@@ -47,7 +47,7 @@ export interface Expense {
   updated_at: string;
   is_archived: boolean;
   server_id?: string;
-  sync_status: 'pending' | 'synced' | 'error';
+  sync_status: 'pending' | 'synced' | 'error' | 'failed';
   last_sync?: string;
   kilometers?: number;
   fuel_liters?: number;
@@ -92,6 +92,7 @@ class DatabaseManager {
 
       await this.createTables();
       await this.runMigrations();
+      await this.migrateAbsoluteReceiptPaths();
 
       console.log('✅ Database initialized successfully');
     } catch (error) {
@@ -171,6 +172,50 @@ class DatabaseManager {
       CREATE INDEX IF NOT EXISTS idx_reports_archived ON expense_reports(is_archived);
       CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(table_name, action);
     `);
+  }
+
+  /**
+   * Migrate old absolute receipt_image_path values to relative filenames.
+   * Absolute paths break when the iOS container UUID changes on app update.
+   */
+  private async migrateAbsoluteReceiptPaths(): Promise<void> {
+    if (!this.db) return;
+    try {
+      const rows = await this.db.getAllAsync<{ id: string; receipt_image_path: string }>(
+        `SELECT id, receipt_image_path FROM expenses WHERE receipt_image_path LIKE 'file://%'`
+      );
+      if (rows.length === 0) return;
+      console.log(`🔄 Migrating ${rows.length} absolute receipt paths to relative...`);
+      for (const row of rows) {
+        const parts = row.receipt_image_path.split('/Documents/');
+        if (parts.length === 2) {
+          await this.db.runAsync(
+            `UPDATE expenses SET receipt_image_path = ? WHERE id = ?`,
+            [parts[1], row.id]
+          );
+        }
+      }
+      console.log('✅ Receipt path migration completed');
+
+      // Also fix localhost URLs in receipt_image_url
+      const localhostRows = await this.db.getAllAsync<{ id: string; receipt_image_url: string }>(
+        `SELECT id, receipt_image_url FROM expenses WHERE receipt_image_url LIKE 'http://localhost%'`
+      );
+      if (localhostRows.length > 0) {
+        console.log(`🔄 Fixing ${localhostRows.length} localhost receipt URLs...`);
+        for (const row of localhostRows) {
+          const urlParts = row.receipt_image_url.split('/uploads/');
+          if (urlParts.length === 2) {
+            await this.db.runAsync(
+              `UPDATE expenses SET receipt_image_url = ? WHERE id = ?`,
+              [urlParts[1], row.id]
+            );
+          }
+        }
+      }
+    } catch (e) {
+      console.error('❌ Receipt path migration failed:', e);
+    }
   }
 
   private async runMigrations(): Promise<void> {
@@ -321,6 +366,76 @@ class DatabaseManager {
     await this.addToSyncQueueInternal('expense_reports', id, 'create', fullReport);
 
     return id;
+  }
+
+  async upsertExpenseReportFromServer(report: Partial<ExpenseReport> & {
+    id: string;
+    title?: string;
+    name?: string;
+    userId?: string;
+    archived?: boolean;
+    isArchived?: boolean;
+    createdAt?: string | Date;
+    updatedAt?: string | Date;
+  }): Promise<string> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const serverId = report.id;
+    const existing = await this.db.getFirstAsync<ExpenseReport>(
+      'SELECT * FROM expense_reports WHERE server_id = ?',
+      [serverId]
+    );
+
+    const title = report.title || report.name || 'Nota Spesa Generica';
+    const now = new Date().toISOString();
+    const createdAt = report.created_at || (report.createdAt ? new Date(report.createdAt).toISOString() : now);
+    const updatedAt = report.updated_at || (report.updatedAt ? new Date(report.updatedAt).toISOString() : now);
+    const archived = Boolean(report.is_archived ?? report.isArchived ?? report.archived ?? false);
+    const userId = report.user_id || report.userId || this.currentUserId || null;
+
+    if (existing) {
+      await this.db.runAsync(`
+        UPDATE expense_reports
+        SET title = ?, description = ?, start_date = ?, end_date = ?, user_id = ?,
+            updated_at = ?, is_archived = ?, sync_status = ?, last_sync = ?
+        WHERE id = ?
+      `, [
+        title,
+        report.description || null,
+        report.start_date || null,
+        report.end_date || null,
+        userId,
+        updatedAt,
+        archived ? 1 : 0,
+        'synced',
+        now,
+        existing.id
+      ]);
+      return existing.id;
+    }
+
+    const localId = this.generateId();
+    await this.db.runAsync(`
+      INSERT INTO expense_reports (
+        id, title, description, start_date, end_date, user_id, created_at, updated_at,
+        is_archived, server_id, sync_status, last_sync
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      localId,
+      title,
+      report.description || null,
+      report.start_date || null,
+      report.end_date || null,
+      userId,
+      createdAt,
+      updatedAt,
+      archived ? 1 : 0,
+      serverId,
+      'synced',
+      now
+    ]);
+
+    return localId;
   }
 
   async getExpenseReports(includeArchived = false): Promise<ExpenseReport[]> {
@@ -506,6 +621,108 @@ class DatabaseManager {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     return id;
+  }
+
+  async upsertExpenseFromServer(expense: Partial<Expense> & {
+    id: string;
+    description?: string;
+    merchant?: string;
+    location?: string;
+    vat?: string;
+    date?: string;
+    note?: string;
+    receiptImages?: string[];
+    createdAt?: string | Date;
+    updatedAt?: string | Date;
+    archived?: boolean;
+    isArchived?: boolean;
+    fuelLiters?: number | null;
+    fuelType?: string | null;
+  }, localReportId: string): Promise<string> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const serverId = expense.id;
+    const now = new Date().toISOString();
+    const createdAt = expense.created_at || (expense.createdAt ? new Date(expense.createdAt).toISOString() : now);
+    const updatedAt = expense.updated_at || (expense.updatedAt ? new Date(expense.updatedAt).toISOString() : now);
+    const receiptImage = expense.receipt_image_url || expense.receipt_image_path || expense.receiptImages?.[0] || null;
+    const archived = Boolean(expense.is_archived ?? expense.isArchived ?? expense.archived ?? false);
+    const receiptDate = expense.receipt_date || expense.date || (createdAt ? String(createdAt).split('T')[0] : now.split('T')[0]);
+
+    const existing = await this.db.getFirstAsync<Expense>(
+      'SELECT * FROM expenses WHERE server_id = ?',
+      [serverId]
+    );
+
+    if (existing) {
+      await this.db.runAsync(`
+        UPDATE expenses
+        SET expense_report_id = ?, amount = ?, currency = ?, merchant_name = ?, merchant_address = ?,
+            merchant_vat = ?, category = ?, receipt_date = ?, receipt_time = ?, receipt_image_path = ?,
+            receipt_image_url = ?, notes = ?, updated_at = ?, is_archived = ?, sync_status = ?,
+            last_sync = ?, kilometers = ?, fuel_liters = ?, fuel_type = ?
+        WHERE id = ?
+      `, [
+        localReportId,
+        expense.amount || 0,
+        expense.currency || 'EUR',
+        expense.merchant_name || expense.merchant || expense.description || null,
+        expense.merchant_address || expense.location || null,
+        expense.merchant_vat || expense.vat || null,
+        expense.category || 'other',
+        receiptDate,
+        expense.receipt_time || '00:00',
+        receiptImage,
+        receiptImage,
+        expense.notes || expense.note || expense.description || null,
+        updatedAt,
+        archived ? 1 : 0,
+        'synced',
+        now,
+        expense.kilometers || null,
+        expense.fuel_liters || expense.fuelLiters || null,
+        expense.fuel_type || expense.fuelType || null,
+        existing.id
+      ]);
+      return existing.id;
+    }
+
+    const localId = this.generateId();
+    await this.db.runAsync(`
+      INSERT INTO expenses (
+        id, expense_report_id, amount, currency, merchant_name, merchant_address,
+        merchant_vat, category, receipt_date, receipt_time, receipt_image_path,
+        receipt_image_url, receipt_thumbnail_url, extracted_data, notes, created_at, updated_at,
+        is_archived, server_id, sync_status, last_sync, kilometers, fuel_liters, fuel_type
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      localId,
+      localReportId,
+      expense.amount || 0,
+      expense.currency || 'EUR',
+      expense.merchant_name || expense.merchant || expense.description || null,
+      expense.merchant_address || expense.location || null,
+      expense.merchant_vat || expense.vat || null,
+      expense.category || 'other',
+      receiptDate,
+      expense.receipt_time || '00:00',
+      receiptImage,
+      receiptImage,
+      expense.receipt_thumbnail_url || null,
+      expense.extracted_data || null,
+      expense.notes || expense.note || expense.description || null,
+      createdAt,
+      updatedAt,
+      archived ? 1 : 0,
+      serverId,
+      'synced',
+      now,
+      expense.kilometers || null,
+      expense.fuel_liters || expense.fuelLiters || null,
+      expense.fuel_type || expense.fuelType || null
+    ]);
+
+    return localId;
   }
 
   async getExpensesByReportId(reportId: string, includeArchived = false): Promise<Expense[]> {
@@ -773,6 +990,32 @@ class DatabaseManager {
     `, [attempts, error || null, id]);
   }
 
+  async getOrphanedUnsyncedExpenses(): Promise<Expense[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const expenses = await this.db.getAllAsync<Expense>(`
+      SELECT e.* FROM expenses e
+      LEFT JOIN sync_queue sq ON sq.record_id = e.id AND sq.table_name = 'expenses'
+      WHERE e.server_id IS NULL
+        AND e.sync_status IN ('pending', 'error', 'failed')
+        AND sq.id IS NULL
+    `);
+
+    return expenses.map(expense => ({
+      ...expense,
+      is_archived: Boolean(expense.is_archived)
+    }));
+  }
+
+  async updateRecordSyncStatus(tableName: 'expense_reports' | 'expenses', recordId: string, syncStatus: 'pending' | 'synced' | 'error' | 'failed'): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    await this.db.runAsync(
+      `UPDATE ${tableName} SET sync_status = ? WHERE id = ?`,
+      [syncStatus, recordId]
+    );
+  }
+
   /**
    * Rimuove duplicati dalla coda di sync per lo stesso record
    * Gestisce anche il caso di create+update per lo stesso record
@@ -857,6 +1100,13 @@ class DatabaseManager {
   }
 
   /**
+   * Restituisce l'ID della nota spese di default (la crea se non esiste)
+   */
+  async getDefaultReportId(): Promise<string> {
+    return this.getOrCreateGenericExpenseReport();
+  }
+
+  /**
    * Ottiene o crea la nota spese generica per gli scontrini dalla funzionalità Scansiona
    */
   async getOrCreateGenericExpenseReport(): Promise<string> {
@@ -869,10 +1119,24 @@ class DatabaseManager {
     let params: any[];
 
     if (this.currentUserId) {
-      query = 'SELECT * FROM expense_reports WHERE title = ? AND (user_id = ? OR user_id IS NULL) AND is_archived = 0 ORDER BY created_at DESC';
+      query = `
+        SELECT expense_reports.*
+        FROM expense_reports
+        LEFT JOIN expenses ON expenses.expense_report_id = expense_reports.id AND expenses.is_archived = 0
+        WHERE title = ? AND (user_id = ? OR user_id IS NULL) AND expense_reports.is_archived = 0
+        GROUP BY expense_reports.id
+        ORDER BY COUNT(expenses.id) DESC, expense_reports.created_at DESC
+      `;
       params = [GENERIC_TITLE, this.currentUserId];
     } else {
-      query = 'SELECT * FROM expense_reports WHERE title = ? AND is_archived = 0 ORDER BY created_at DESC';
+      query = `
+        SELECT expense_reports.*
+        FROM expense_reports
+        LEFT JOIN expenses ON expenses.expense_report_id = expense_reports.id AND expenses.is_archived = 0
+        WHERE title = ? AND expense_reports.is_archived = 0
+        GROUP BY expense_reports.id
+        ORDER BY COUNT(expenses.id) DESC, expense_reports.created_at DESC
+      `;
       params = [GENERIC_TITLE];
     }
 
@@ -1064,6 +1328,7 @@ class DatabaseManager {
 
     console.log('\n🏁 =======================================\n');
   }
+
 }
 
 export const databaseManager = new DatabaseManager();

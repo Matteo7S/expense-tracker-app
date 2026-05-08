@@ -22,6 +22,8 @@ import { MainStackParamList } from '../../navigation/MainNavigator';
 import { databaseManager } from '../../services/database';
 import { syncManager } from '../../services/syncManager';
 import { triggerExpenseRefresh } from '../../hooks/useExpenseRefresh';
+import { toRelativeReceiptPath } from '../../utils/receiptPath';
+import { useI18n } from '../../i18n';
 
 type CameraScreenNavigationProp = StackNavigationProp<MainStackParamList, 'Camera' | 'GenericCamera'>;
 type CameraScreenRouteProp = RouteProp<MainStackParamList, 'Camera' | 'GenericCamera'>;
@@ -31,7 +33,7 @@ const { width, height } = Dimensions.get('window');
 export function CameraScreen() {
   const navigation = useNavigation<CameraScreenNavigationProp>();
   const route = useRoute<CameraScreenRouteProp>();
-  const reportId = (route.params as any)?.reportId || null; // Optional for generic scanning
+  const { t } = useI18n();
 
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<CameraType>('back');
@@ -69,7 +71,7 @@ export function CameraScreen() {
       }
     } catch (error) {
       console.error('Error picking image:', error);
-      Alert.alert('Errore', 'Impossibile selezionare il file');
+      Alert.alert(t('common.error'), t('scanner.pickFileError'));
     }
   };
 
@@ -81,15 +83,15 @@ export function CameraScreen() {
           <TouchableOpacity style={styles.webBackButton} onPress={goBack}>
             <MaterialIcons name="arrow-back" size={24} color="#007AFF" />
           </TouchableOpacity>
-          <Text style={styles.webTitle}>Carica Scontrino</Text>
+          <Text style={styles.webTitle}>{t('scanner.uploadReceipt')}</Text>
         </View>
         
         {!showPreview ? (
           <View style={styles.webUploadContainer}>
             <MaterialIcons name="receipt" size={80} color="#ccc" />
-            <Text style={styles.webUploadTitle}>Seleziona Scontrino</Text>
+            <Text style={styles.webUploadTitle}>{t('scanner.selectReceipt')}</Text>
             <Text style={styles.webUploadText}>
-              Seleziona un'immagine dello scontrino dal tuo dispositivo
+              {t('scanner.selectReceiptDescription')}
             </Text>
             
             <TouchableOpacity 
@@ -97,7 +99,7 @@ export function CameraScreen() {
               onPress={pickImage}
             >
               <MaterialIcons name="file-upload" size={24} color="white" />
-              <Text style={styles.webUploadButtonText}>Scegli File</Text>
+              <Text style={styles.webUploadButtonText}>{t('scanner.chooseFile')}</Text>
             </TouchableOpacity>
           </View>
         ) : null}
@@ -110,7 +112,7 @@ export function CameraScreen() {
     return (
       <View style={styles.permissionContainer}>
         <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.permissionText}>Caricamento...</Text>
+        <Text style={styles.permissionText}>{t('common.loading')}</Text>
       </View>
     );
   }
@@ -120,12 +122,12 @@ export function CameraScreen() {
     return (
       <View style={styles.permissionContainer}>
         <MaterialIcons name="camera-alt" size={64} color="#ccc" />
-        <Text style={styles.permissionTitle}>Accesso alla Fotocamera</Text>
+        <Text style={styles.permissionTitle}>{t('scanner.cameraAccess')}</Text>
         <Text style={styles.permissionText}>
-          Questa app ha bisogno dell'accesso alla fotocamera per scansionare gli scontrini
+          {t('scanner.cameraAccessDescription')}
         </Text>
         <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
-          <Text style={styles.permissionButtonText}>Concedi Accesso</Text>
+          <Text style={styles.permissionButtonText}>{t('scanner.grantAccess')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -152,7 +154,7 @@ export function CameraScreen() {
       }
     } catch (error) {
       console.error('Error taking picture:', error);
-      Alert.alert('Errore', 'Impossibile scattare la foto');
+      Alert.alert(t('common.error'), t('scanner.takePictureError'));
     }
   };
 
@@ -188,15 +190,7 @@ export function CameraScreen() {
       
       console.log('📁 Image saved to:', permanentPath);
       
-      // Determina il report ID
-      let targetReportId: string;
-      if (reportId) {
-        console.log('📝 Using provided reportId:', reportId);
-        targetReportId = reportId;
-      } else {
-        console.log('📋 Using generic expense report');
-        targetReportId = await databaseManager.getOrCreateGenericExpenseReport();
-      }
+      const targetReportId = await databaseManager.getDefaultReportId();
       
       // Crea la spesa nel database locale con dati minimi
       const expenseId = await databaseManager.createExpense({
@@ -207,7 +201,7 @@ export function CameraScreen() {
         category: 'other',
         receipt_date: new Date().toISOString().split('T')[0],
         receipt_time: new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
-        receipt_image_path: permanentPath,
+        receipt_image_path: toRelativeReceiptPath(permanentPath),
         extracted_data: JSON.stringify({ source: 'camera_simple' }),
         notes: 'Caricato da fotocamera semplice - da completare',
         is_archived: false,
@@ -227,19 +221,12 @@ export function CameraScreen() {
       triggerExpenseRefresh();
       
       // Mostra messaggio di successo
-      const isGenericReport = !reportId;
-      const reportMessage = isGenericReport 
-        ? 'nella nota spese generica' 
-        : 'nella nota spese selezionata';
-      
       Alert.alert(
-        'Scontrino Salvato!',
-        `Lo scontrino è stato salvato localmente ${reportMessage}.\n\n` +
-        'I dati verranno sincronizzati automaticamente quando possibile. ' +
-        'Puoi completare i dettagli dalla lista spese.',
+        t('scanner.receiptSavedTitle'),
+        t('scanner.receiptSavedMessage'),
         [
           {
-            text: 'Continua Scansione',
+            text: t('scanner.continueScanning'),
             style: 'default',
             onPress: () => {
               // Reset per la prossima foto
@@ -248,13 +235,13 @@ export function CameraScreen() {
             }
           },
           {
-            text: 'Vai a Note Spese',
+            text: t('scanner.goToExpenses'),
             style: 'cancel',
             onPress: () => {
               // Reset e torna alla lista
               setCapturedImage(null);
               setShowPreview(false);
-              navigation.navigate('ExpenseReportsTabs', { screen: 'ExpenseReports' });
+              navigation.navigate('ExpenseReportsTabs');
             }
           }
         ]
@@ -263,8 +250,8 @@ export function CameraScreen() {
     } catch (error) {
       console.error('❌ Error saving receipt locally:', error);
       Alert.alert(
-        'Errore',
-        'Si è verificato un errore durante il salvataggio dello scontrino. Riprova.',
+        t('common.error'),
+        t('scanner.saveReceiptError'),
         [
           {
             text: 'OK',
@@ -300,15 +287,15 @@ export function CameraScreen() {
 
         {/* Preview Controls */}
         <View style={styles.previewControls}>
-          <Text style={styles.previewTitle}>Anteprima Scontrino</Text>
+          <Text style={styles.previewTitle}>{t('scanner.previewTitle')}</Text>
           <Text style={styles.previewSubtitle}>
-            Vuoi tenere questa foto?
+            {t('scanner.previewQuestion')}
           </Text>
           
           {isUploading ? (
             <View style={styles.uploadingContainer}>
               <ActivityIndicator size="large" color="#007AFF" />
-              <Text style={styles.uploadingText}>Caricamento...</Text>
+              <Text style={styles.uploadingText}>{t('common.loading')}</Text>
             </View>
           ) : (
             <View style={styles.buttonRow}>
@@ -317,7 +304,7 @@ export function CameraScreen() {
                 onPress={retakePicture}
               >
                 <MaterialIcons name="close" size={24} color="#ff4444" />
-                <Text style={styles.discardButtonText}>Scarta</Text>
+                <Text style={styles.discardButtonText}>{t('scanner.discard')}</Text>
               </TouchableOpacity>
               
               <TouchableOpacity
@@ -325,7 +312,7 @@ export function CameraScreen() {
                 onPress={keepPicture}
               >
                 <MaterialIcons name="check" size={24} color="white" />
-                <Text style={styles.keepButtonText}>Tieni</Text>
+                <Text style={styles.keepButtonText}>{t('scanner.keep')}</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -351,7 +338,7 @@ export function CameraScreen() {
             <MaterialIcons name="arrow-back" size={28} color="white" />
           </TouchableOpacity>
           
-          <Text style={styles.titleText}>Scansiona Scontrino</Text>
+          <Text style={styles.titleText}>{t('scanner.scanReceipt')}</Text>
           
           <TouchableOpacity style={styles.flipButton} onPress={toggleCameraFacing}>
             <MaterialIcons name="flip-camera-ios" size={28} color="white" />
@@ -369,7 +356,7 @@ export function CameraScreen() {
           </View>
           
           <Text style={styles.instructionText}>
-            Inquadra lo scontrino all'interno del riquadro
+            {t('scanner.frameInstruction')}
           </Text>
         </View>
 

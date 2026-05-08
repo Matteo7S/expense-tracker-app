@@ -14,8 +14,16 @@ import { receiptService } from './receiptService';
 import { useEffect, useState } from 'react';
 import * as FileSystem from 'expo-file-system/legacy';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
-import { resolveReceiptPath } from '../utils/receiptPath';
-import { toRelativeReceiptPath } from '../utils/receiptPath';
+import { resolveReceiptPath, toRelativeReceiptPath } from '../utils/receiptPath';
+
+// Server requires HH:MM. Legacy records may have HH:MM:SS; normalize.
+function normalizeReceiptTime(raw: string | null | undefined, fallback = '00:00'): string {
+  if (!raw) return fallback;
+  const m = /^(\d{1,2}):(\d{2})/.exec(raw);
+  if (!m) return fallback;
+  const hh = m[1].padStart(2, '0');
+  return `${hh}:${m[2]}`;
+}
 
 export interface SyncStats {
   pendingSync: number;
@@ -28,7 +36,7 @@ class SyncManager {
   private isRunning = false;
   private hasRequeued = false;
   private syncIntervalId: NodeJS.Timeout | null = null;
-  private listeners: Array<(stats: SyncStats) => void> = [];
+  private listeners: ((stats: SyncStats) => void)[] = [];
   private stats: SyncStats = {
     pendingSync: 0,
     isRunning: false,
@@ -99,19 +107,14 @@ class SyncManager {
    */
   private async requeueOrphanedExpenses(): Promise<void> {
     try {
-      const db = (databaseManager as any).db;
-      if (!db) return;
-
-      const orphaned = await db.getAllAsync<any>(`
-        SELECT e.* FROM expenses e
-        LEFT JOIN sync_queue sq ON sq.record_id = e.id AND sq.table_name = 'expenses'
-        WHERE e.server_id IS NULL
-          AND e.sync_status IN ('pending', 'error')
-          AND sq.id IS NULL
-      `);
+      const orphaned = await databaseManager.getOrphanedUnsyncedExpenses();
 
       for (const expense of orphaned) {
-        console.log('🔄 Re-queuing orphaned expense:', expense.id, expense.merchant_name);
+        console.log('🔄 Re-queuing orphaned expense:', expense.id, expense.merchant_name, 'prev_status:', expense.sync_status);
+        // Reset status so it flows normally through the queue; if it fails again it'll hit 5 attempts and be marked failed.
+        if (expense.sync_status === 'failed') {
+          await databaseManager.updateRecordSyncStatus('expenses', expense.id, 'pending');
+        }
         await databaseManager.addToSyncQueue({
           table_name: 'expenses',
           record_id: expense.id,
@@ -211,15 +214,9 @@ class SyncManager {
             console.log(`❌ Removing item ${item.id} after ${newAttempts} failed attempts`);
             await databaseManager.removeSyncQueueItem(item.id);
             // Mark the record as permanently failed so requeueOrphanedExpenses won't re-add it
-            try {
-              const db = (databaseManager as any).db;
-              if (db) {
-                await db.runAsync(
-                  `UPDATE ${item.table_name} SET sync_status = 'failed' WHERE id = ?`,
-                  [item.record_id]
-                );
-              }
-            } catch (e) { /* ignore */ }
+            if (item.table_name === 'expense_reports' || item.table_name === 'expenses') {
+              await databaseManager.updateRecordSyncStatus(item.table_name, item.record_id, 'failed');
+            }
           }
         }
       }
@@ -413,7 +410,7 @@ class SyncManager {
           merchantVat: expense.merchant_vat,
           category: expense.category || 'other',
           receiptDate: expense.receipt_date,
-          receiptTime: expense.receipt_time || '00:00',
+          receiptTime: normalizeReceiptTime(expense.receipt_time),
           extractedData: expense.extracted_data ? JSON.parse(expense.extracted_data) : undefined,
           notes: expense.notes,
           kilometers: expense.kilometers,
@@ -513,7 +510,7 @@ class SyncManager {
           merchantVat: expense.merchant_vat,
           category: expense.category,
           receiptDate: expense.receipt_date,
-          receiptTime: expense.receipt_time,
+          receiptTime: normalizeReceiptTime(expense.receipt_time),
           receiptImageUrl: validImageUrl,
           extractedData: expense.extracted_data ? JSON.parse(expense.extracted_data) : undefined,
           notes: expense.notes,

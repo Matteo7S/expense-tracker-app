@@ -2,21 +2,23 @@
  * Modal per la verifica e modifica dei dati rilevati dalla scansione OCR
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   Modal,
-  SafeAreaView,
   TextInput,
   Alert,
   ScrollView,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { MaterialIcons } from '@expo/vector-icons';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useI18n } from '../i18n';
 
 export interface ExtractedData {
   amount?: number;
@@ -58,9 +60,12 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
   onConfirm,
   onCancel,
   isLoading = false,
-  title = "Verifica Dati Scontrino",
-  subtitle = "Controlla e modifica i dati rilevati prima di salvare"
+  title,
+  subtitle
 }) => {
+  const { formatDate: formatLocalizedDate, locale, t } = useI18n();
+  const insets = useSafeAreaInsets();
+  const scrollViewRef = useRef<ScrollView>(null);
   const [amount, setAmount] = useState<string>('');
   const [currency, setCurrency] = useState<string>('EUR');
   const [merchantName, setMerchantName] = useState<string>('');
@@ -80,15 +85,15 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
 
   // Lista categorie disponibili
   const categories = [
-    { value: 'food', label: 'Cibo e Bevande', icon: 'restaurant' },
-    { value: 'transport', label: 'Trasporti', icon: 'directions-car' },
-    { value: 'accommodation', label: 'Alloggio', icon: 'hotel' },
-    { value: 'entertainment', label: 'Intrattenimento', icon: 'movie' },
-    { value: 'shopping', label: 'Shopping', icon: 'shopping-bag' },
-    { value: 'health', label: 'Salute', icon: 'local-hospital' },
-    { value: 'fuel', label: 'Carburante', icon: 'local-gas-station' },
-    { value: 'business', label: 'Business', icon: 'business' },
-    { value: 'other', label: 'Altro', icon: 'more-horiz' },
+    { value: 'food', labelKey: 'categories.foodAndDrinks', icon: 'restaurant' },
+    { value: 'transport', labelKey: 'categories.transport', icon: 'directions-car' },
+    { value: 'accommodation', labelKey: 'categories.accommodation', icon: 'hotel' },
+    { value: 'entertainment', labelKey: 'categories.entertainment', icon: 'movie' },
+    { value: 'shopping', labelKey: 'categories.shopping', icon: 'shopping-bag' },
+    { value: 'health', labelKey: 'categories.health', icon: 'local-hospital' },
+    { value: 'fuel', labelKey: 'categories.fuel', icon: 'local-gas-station' },
+    { value: 'business', labelKey: 'categories.business', icon: 'business' },
+    { value: 'other', labelKey: 'categories.other', icon: 'more-horiz' },
   ];
 
   const currencies = [
@@ -178,47 +183,38 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
   };
 
   const getConfidenceText = (confidence?: number) => {
-    if (!confidence) return 'Manuale';
-    if (confidence >= 0.8) return 'Alta';
-    if (confidence >= 0.6) return 'Media';
-    return 'Bassa';
+    if (!confidence) return t('verification.manual');
+    if (confidence >= 0.8) return t('verification.high');
+    if (confidence >= 0.6) return t('verification.medium');
+    return t('verification.low');
   };
 
   const getCategoryLabel = (category: string) => {
-    const categoryLabels: Record<string, string> = {
-      'food': 'Cibo e Bevande',
-      'transport': 'Trasporti',
-      'accommodation': 'Alloggio',
-      'entertainment': 'Intrattenimento',
-      'shopping': 'Shopping',
-      'health': 'Salute',
-      'business': 'Business',
-      'other': 'Altro'
-    };
-    return categoryLabels[category] || category;
+    const categoryOption = categories.find(item => item.value === category);
+    return categoryOption ? t(categoryOption.labelKey) : category;
   };
 
   const formatDate = (date: Date) => {
-    return date.toLocaleDateString('it-IT');
+    return formatLocalizedDate(date);
   };
 
   const formatTime = (time: Date) => {
-    return time.toLocaleTimeString('it-IT', {
+    return new Intl.DateTimeFormat(locale, {
       hour: '2-digit',
       minute: '2-digit'
-    });
+    }).format(time);
   };
 
   const handleConfirm = () => {
     // Valida l'importo
     if (!amount.trim()) {
-      Alert.alert('Errore', 'L\'importo è obbligatorio');
+      Alert.alert(t('common.error'), t('verification.amountRequired'));
       return;
     }
 
     const numericAmount = parseFloat(amount.replace(',', '.'));
     if (isNaN(numericAmount) || numericAmount <= 0) {
-      Alert.alert('Errore', 'Inserisci un importo valido (es: 12,50)');
+      Alert.alert(t('common.error'), t('verification.invalidAmount'));
       return;
     }
 
@@ -252,6 +248,12 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
     onCancel();
   };
 
+  const scrollToField = (y: number) => {
+    setTimeout(() => {
+      scrollViewRef.current?.scrollTo({ y, animated: true });
+    }, 120);
+  };
+
   return (
     <Modal
       visible={visible}
@@ -259,28 +261,42 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <SafeAreaView style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={handleCancel} disabled={isLoading}>
-            <MaterialIcons name="close" size={24} color="#007AFF" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>{title}</Text>
-          <TouchableOpacity onPress={handleConfirm} disabled={isLoading}>
-            <Text style={[styles.confirmText, isLoading && styles.disabledText]}>
-              {isLoading ? 'Salvando...' : 'Salva'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+        <KeyboardAvoidingView
+          style={styles.keyboardAvoiding}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          {/* Header */}
+          <View style={styles.header}>
+            <TouchableOpacity onPress={handleCancel} disabled={isLoading}>
+              <MaterialIcons name="close" size={24} color="#007AFF" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>{title || t('scanner.verifyReceiptData')}</Text>
+            <TouchableOpacity onPress={handleConfirm} disabled={isLoading}>
+              <Text style={[styles.confirmText, isLoading && styles.disabledText]}>
+                {isLoading ? t('verification.saving') : t('verification.save')}
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          ref={scrollViewRef}
+          style={styles.content}
+          contentContainerStyle={[
+            styles.contentContainer,
+            { paddingBottom: Math.max(insets.bottom, 16) + 32 },
+          ]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        >
           {/* Subtitle */}
-          <Text style={styles.subtitle}>{subtitle}</Text>
+          <Text style={styles.subtitle}>{subtitle || t('scanner.verifyReceiptDataSubtitle')}</Text>
 
           {/* Importo */}
           <View style={styles.fieldContainer}>
             <View style={styles.fieldHeader}>
-              <Text style={styles.fieldLabel}>Importo *</Text>
+              <Text style={styles.fieldLabel}>{t('verification.amount')}</Text>
               <View style={styles.confidenceIndicator}>
                 <View style={[
                   styles.confidenceDot,
@@ -315,7 +331,7 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
           {/* Data */}
           <View style={styles.fieldContainer}>
             <View style={styles.fieldHeader}>
-              <Text style={styles.fieldLabel}>Data</Text>
+              <Text style={styles.fieldLabel}>{t('verification.date')}</Text>
               <View style={styles.confidenceIndicator}>
                 <View style={[
                   styles.confidenceDot,
@@ -346,7 +362,7 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
           {/* Ora */}
           <View style={styles.fieldContainer}>
             <View style={styles.fieldHeader}>
-              <Text style={styles.fieldLabel}>Ora</Text>
+              <Text style={styles.fieldLabel}>{t('verification.time')}</Text>
               <View style={styles.confidenceIndicator}>
                 <View style={[
                   styles.confidenceDot,
@@ -377,7 +393,7 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
           {/* Esercente */}
           <View style={styles.fieldContainer}>
             <View style={styles.fieldHeader}>
-              <Text style={styles.fieldLabel}>Esercente</Text>
+              <Text style={styles.fieldLabel}>{t('verification.merchant')}</Text>
               <View style={styles.confidenceIndicator}>
                 <View style={[
                   styles.confidenceDot,
@@ -398,7 +414,8 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
               ]}
               value={merchantName}
               onChangeText={setMerchantName}
-              placeholder="Nome dell'esercente (opzionale)"
+              onFocus={() => scrollToField(250)}
+              placeholder={t('verification.merchantPlaceholder')}
               editable={!isLoading}
             />
           </View>
@@ -406,7 +423,7 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
           {/* Categoria (modificabile) */}
           <View style={styles.fieldContainer}>
             <View style={styles.fieldHeader}>
-              <Text style={styles.fieldLabel}>Categoria</Text>
+              <Text style={styles.fieldLabel}>{t('verification.category')}</Text>
               <View style={styles.confidenceIndicator}>
                 <View style={[
                   styles.confidenceDot,
@@ -434,7 +451,7 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
                 color="#007AFF"
               />
               <Text style={styles.dateTimeText}>
-                {categories.find(c => c.value === category)?.label || 'Seleziona categoria'}
+                {getCategoryLabel(category)}
               </Text>
               <MaterialIcons name="arrow-drop-down" size={20} color="#666" />
             </TouchableOpacity>
@@ -443,12 +460,12 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
           {/* Sezione Carburante e Kilometri (visibile solo se rilevati o categoria transport/fuel) */}
           {(category === 'transport' || category === 'fuel' || kilometers || fuelLiters || fuelType) && (
             <View style={styles.sectionContainer}>
-              <Text style={styles.sectionTitle}>Dati Veicolo</Text>
+              <Text style={styles.sectionTitle}>{t('verification.vehicleData')}</Text>
 
               {/* Kilometri */}
               <View style={styles.fieldContainer}>
                 <View style={styles.fieldHeader}>
-                  <Text style={styles.fieldLabel}>Kilometri</Text>
+                  <Text style={styles.fieldLabel}>{t('verification.kilometers')}</Text>
                   {extractedData.confidence?.kilometers && (
                     <View style={styles.confidenceIndicator}>
                       <View style={[
@@ -471,6 +488,7 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
                   ]}
                   value={kilometers}
                   onChangeText={(text) => setKilometers(text.replace(/[^0-9,\.]/g, ''))}
+                  onFocus={() => scrollToField(520)}
                   placeholder="Es. 125000"
                   keyboardType="decimal-pad"
                   editable={!isLoading}
@@ -483,23 +501,23 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
 
           {/* Info sui livelli di confidenza */}
           <View style={styles.infoContainer}>
-            <Text style={styles.infoTitle}>🔍 Precisione Rilevamento</Text>
+            <Text style={styles.infoTitle}>{t('verification.detectionAccuracy')}</Text>
             <View style={styles.legendContainer}>
               <View style={styles.legendItem}>
                 <View style={[styles.confidenceDot, { backgroundColor: '#4caf50' }]} />
-                <Text style={styles.legendText}>Alta (80%+)</Text>
+                <Text style={styles.legendText}>{t('verification.highLegend')}</Text>
               </View>
               <View style={styles.legendItem}>
                 <View style={[styles.confidenceDot, { backgroundColor: '#ff9800' }]} />
-                <Text style={styles.legendText}>Media (60-80%)</Text>
+                <Text style={styles.legendText}>{t('verification.mediumLegend')}</Text>
               </View>
               <View style={styles.legendItem}>
                 <View style={[styles.confidenceDot, { backgroundColor: '#e91e63' }]} />
-                <Text style={styles.legendText}>Bassa (&lt;60%)</Text>
+                <Text style={styles.legendText}>{t('verification.lowLegend')}</Text>
               </View>
               <View style={styles.legendItem}>
                 <View style={[styles.confidenceDot, { backgroundColor: '#f44336' }]} />
-                <Text style={styles.legendText}>Richiede Attenzione</Text>
+                <Text style={styles.legendText}>{t('verification.needsAttention')}</Text>
               </View>
             </View>
           </View>
@@ -508,14 +526,14 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
         {/* Date/Time Pickers */}
         {showDatePicker && (
           <View style={styles.pickerOverlay}>
-            <View style={styles.pickerContainer}>
+            <View style={[styles.pickerContainer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
               <View style={styles.pickerHeader}>
                 <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                  <Text style={styles.pickerCancelText}>Annulla</Text>
+                  <Text style={styles.pickerCancelText}>{t('common.cancel')}</Text>
                 </TouchableOpacity>
-                <Text style={styles.pickerTitle}>Seleziona Data</Text>
+                <Text style={styles.pickerTitle}>{t('expenseForm.selectDate')}</Text>
                 <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                  <Text style={styles.pickerConfirmText}>Conferma</Text>
+                  <Text style={styles.pickerConfirmText}>{t('common.confirm')}</Text>
                 </TouchableOpacity>
               </View>
               <View style={styles.pickerWrapper}>
@@ -526,6 +544,7 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
                   onChange={handleDateChange}
                   style={styles.picker}
                   textColor={Platform.OS === 'ios' ? '#000' : undefined}
+                  locale={locale}
                 />
               </View>
             </View>
@@ -534,14 +553,14 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
 
         {showTimePicker && (
           <View style={styles.pickerOverlay}>
-            <View style={styles.pickerContainer}>
+            <View style={[styles.pickerContainer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
               <View style={styles.pickerHeader}>
                 <TouchableOpacity onPress={() => setShowTimePicker(false)}>
-                  <Text style={styles.pickerCancelText}>Annulla</Text>
+                  <Text style={styles.pickerCancelText}>{t('common.cancel')}</Text>
                 </TouchableOpacity>
-                <Text style={styles.pickerTitle}>Seleziona Ora</Text>
+                <Text style={styles.pickerTitle}>{t('verification.selectTime')}</Text>
                 <TouchableOpacity onPress={() => setShowTimePicker(false)}>
-                  <Text style={styles.pickerConfirmText}>Conferma</Text>
+                  <Text style={styles.pickerConfirmText}>{t('common.confirm')}</Text>
                 </TouchableOpacity>
               </View>
               <View style={styles.pickerWrapper}>
@@ -552,6 +571,7 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
                   onChange={handleTimeChange}
                   style={styles.picker}
                   textColor={Platform.OS === 'ios' ? '#000' : undefined}
+                  locale={locale}
                 />
               </View>
             </View>
@@ -561,14 +581,14 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
         {/* Currency Picker */}
         {showCurrencyPicker && (
           <View style={styles.pickerOverlay}>
-            <View style={styles.pickerContainer}>
+            <View style={[styles.pickerContainer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
               <View style={styles.pickerHeader}>
                 <TouchableOpacity onPress={() => setShowCurrencyPicker(false)}>
-                  <Text style={styles.pickerCancelText}>Annulla</Text>
+                  <Text style={styles.pickerCancelText}>{t('common.cancel')}</Text>
                 </TouchableOpacity>
-                <Text style={styles.pickerTitle}>Seleziona Valuta</Text>
+                <Text style={styles.pickerTitle}>{t('expenseForm.selectCurrency')}</Text>
                 <TouchableOpacity onPress={() => setShowCurrencyPicker(false)}>
-                  <Text style={styles.pickerConfirmText}>Conferma</Text>
+                  <Text style={styles.pickerConfirmText}>{t('common.confirm')}</Text>
                 </TouchableOpacity>
               </View>
               <ScrollView style={styles.categoryPickerList}>
@@ -603,14 +623,14 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
         {/* Category Picker */}
         {showCategoryPicker && (
           <View style={styles.pickerOverlay}>
-            <View style={styles.pickerContainer}>
+            <View style={[styles.pickerContainer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
               <View style={styles.pickerHeader}>
                 <TouchableOpacity onPress={() => setShowCategoryPicker(false)}>
-                  <Text style={styles.pickerCancelText}>Annulla</Text>
+                  <Text style={styles.pickerCancelText}>{t('common.cancel')}</Text>
                 </TouchableOpacity>
-                <Text style={styles.pickerTitle}>Seleziona Categoria</Text>
+                <Text style={styles.pickerTitle}>{t('expenseForm.selectCategory')}</Text>
                 <TouchableOpacity onPress={() => setShowCategoryPicker(false)}>
-                  <Text style={styles.pickerConfirmText}>Conferma</Text>
+                  <Text style={styles.pickerConfirmText}>{t('common.confirm')}</Text>
                 </TouchableOpacity>
               </View>
               <ScrollView style={styles.categoryPickerList}>
@@ -635,7 +655,7 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
                       styles.categoryPickerItemText,
                       category === cat.value && styles.categoryPickerItemTextSelected,
                     ]}>
-                      {cat.label}
+                      {t(cat.labelKey)}
                     </Text>
                     {category === cat.value && (
                       <MaterialIcons name="check" size={24} color="#007AFF" />
@@ -650,14 +670,14 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
         {/* Fuel Type Picker */}
         {showFuelTypePicker && (
           <View style={styles.pickerOverlay}>
-            <View style={styles.pickerContainer}>
+            <View style={[styles.pickerContainer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
               <View style={styles.pickerHeader}>
                 <TouchableOpacity onPress={() => setShowFuelTypePicker(false)}>
-                  <Text style={styles.pickerCancelText}>Annulla</Text>
+                  <Text style={styles.pickerCancelText}>{t('common.cancel')}</Text>
                 </TouchableOpacity>
-                <Text style={styles.pickerTitle}>Seleziona Carburante</Text>
+                <Text style={styles.pickerTitle}>{t('verification.selectFuel')}</Text>
                 <TouchableOpacity onPress={() => setShowFuelTypePicker(false)}>
-                  <Text style={styles.pickerConfirmText}>Conferma</Text>
+                  <Text style={styles.pickerConfirmText}>{t('common.confirm')}</Text>
                 </TouchableOpacity>
               </View>
               <ScrollView style={styles.categoryPickerList}>
@@ -688,6 +708,7 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
             </View>
           </View>
         )}
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
   );
@@ -697,6 +718,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
+  },
+  keyboardAvoiding: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',
@@ -743,6 +767,9 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 20,
+  },
+  contentContainer: {
+    flexGrow: 1,
   },
   subtitle: {
     fontSize: 16,

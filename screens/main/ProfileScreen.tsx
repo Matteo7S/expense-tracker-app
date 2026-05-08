@@ -9,13 +9,13 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
-import { CompositeNavigationProp } from '@react-navigation/native';
+import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSyncStats, syncManager } from '../../services/syncManager';
 import { MainStackParamList, TabParamList } from '../../navigation/MainNavigator';
+import { useI18n } from '../../i18n';
 
 type ProfileScreenNavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Profile'>,
@@ -26,18 +26,19 @@ export function ProfileScreen() {
   const navigation = useNavigation<ProfileScreenNavigationProp>();
   const { user, logout } = useAuth();
   const syncStats = useSyncStats();
+  const { language, languageLabel, supportedLanguages, setLanguage, t } = useI18n();
 
   const handleLogout = () => {
     Alert.alert(
-      'Logout',
-      'Sei sicuro di voler uscire?',
+      t('profile.logoutTitle'),
+      t('profile.logoutConfirmation'),
       [
         {
-          text: 'Annulla',
+          text: t('common.cancel'),
           style: 'cancel',
         },
         {
-          text: 'Esci',
+          text: t('profile.logoutAction'),
           style: 'destructive',
           onPress: logout,
         },
@@ -53,14 +54,33 @@ export function ProfileScreen() {
     navigation.navigate('ArchivedExpenses');
   };
 
+  const handleChangeLanguage = () => {
+    Alert.alert(
+      t('profile.language'),
+      languageLabel,
+      [
+        ...supportedLanguages.map((item) => ({
+          text: `${t(`languages.${item}`)}${item === language ? ' ✓' : ''}`,
+          onPress: () => {
+            void setLanguage(item);
+          },
+        })),
+        {
+          text: t('common.cancel'),
+          style: 'cancel' as const,
+        },
+      ]
+    );
+  };
+
   const handleSync = async () => {
     try {
       await syncManager.forceSyncNow();
-      Alert.alert('Sincronizzazione', 'Sincronizzazione completata con successo!');
+      Alert.alert(t('profile.syncSuccessTitle'), t('profile.syncSuccessMessage'));
     } catch (error) {
       Alert.alert(
-        'Errore Sincronizzazione', 
-        error instanceof Error ? error.message : 'Errore durante la sincronizzazione'
+        t('profile.syncErrorTitle'),
+        error instanceof Error ? error.message : t('profile.syncErrorMessage')
       );
     }
   };
@@ -111,7 +131,7 @@ export function ProfileScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Profilo</Text>
+        <Text style={styles.title}>{t('profile.title')}</Text>
       </View>
 
       <View style={styles.content}>
@@ -130,7 +150,7 @@ export function ProfileScreen() {
             disabled={syncStats.isRunning}
           >
             <MaterialIcons name="sync" size={24} color="#007AFF" />
-            <Text style={styles.optionText}>Sincronizzazione</Text>
+            <Text style={styles.optionText}>{t('profile.sync')}</Text>
             {getSyncStatusIcon()}
           </TouchableOpacity>
 
@@ -139,7 +159,7 @@ export function ProfileScreen() {
             onPress={handleArchiveExpenses}
           >
             <MaterialIcons name="archive" size={24} color="#6c757d" />
-            <Text style={styles.optionText}>Archivio Spese</Text>
+            <Text style={styles.optionText}>{t('profile.archivedExpenses')}</Text>
             <MaterialIcons name="chevron-right" size={24} color="#ccc" />
           </TouchableOpacity>
 
@@ -148,7 +168,17 @@ export function ProfileScreen() {
             onPress={handleChangePassword}
           >
             <MaterialIcons name="lock" size={24} color="#666" />
-            <Text style={styles.optionText}>Cambia Password</Text>
+            <Text style={styles.optionText}>{t('profile.changePassword')}</Text>
+            <MaterialIcons name="chevron-right" size={24} color="#ccc" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.option}
+            onPress={handleChangeLanguage}
+          >
+            <MaterialIcons name="language" size={24} color="#666" />
+            <Text style={styles.optionText}>{t('profile.language')}</Text>
+            <Text style={styles.optionValue}>{languageLabel}</Text>
             <MaterialIcons name="chevron-right" size={24} color="#ccc" />
           </TouchableOpacity>
 
@@ -157,7 +187,7 @@ export function ProfileScreen() {
             onPress={handleLogout}
           >
             <MaterialIcons name="logout" size={24} color="#ff4444" />
-            <Text style={[styles.optionText, styles.logoutText]}>Logout</Text>
+            <Text style={[styles.optionText, styles.logoutText]}>{t('profile.logoutTitle')}</Text>
             <MaterialIcons name="chevron-right" size={24} color="#ccc" />
           </TouchableOpacity>
         </View>
@@ -244,6 +274,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
     marginLeft: 12,
+  },
+  optionValue: {
+    fontSize: 14,
+    color: '#666',
+    marginRight: 8,
   },
   logoutOption: {
     borderBottomWidth: 0,

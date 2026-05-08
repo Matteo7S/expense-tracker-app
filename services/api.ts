@@ -2,9 +2,49 @@ import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import { SecureStorage } from './secureStorage';
 import { API_ENDPOINTS } from '../config/api';
 import logger from '../utils/logger';
+import { authEvents } from '../utils/authEvents';
 
 const API_BASE_URL = API_ENDPOINTS.MAIN_API;
 const AUTH_API_URL = API_ENDPOINTS.AUTH_API;
+
+const AUTH_EXEMPT_PATHS = ['/auth/login', '/auth/register', '/auth/refresh-token'];
+
+let refreshPromise: Promise<string | null> | null = null;
+
+async function tryRefresh(): Promise<string | null> {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    try {
+      const rt = await SecureStorage.getItemAsync('auth_refresh_token');
+      if (!rt) {
+        logger.warn('🔁 Refresh skipped: no refresh token stored');
+        return null;
+      }
+      logger.info('🔁 Attempting token refresh...');
+      const res = await axios.post(
+        `${AUTH_API_URL}/auth/refresh-token`,
+        { refreshToken: rt },
+        { timeout: 10000, headers: { 'Content-Type': 'application/json' } }
+      );
+      if (res.data?.success && res.data?.data?.token) {
+        await SecureStorage.setItemAsync('auth_token', res.data.data.token);
+        if (res.data.data.refreshToken) {
+          await SecureStorage.setItemAsync('auth_refresh_token', res.data.data.refreshToken);
+        }
+        logger.info('✅ Token refresh succeeded');
+        return res.data.data.token;
+      }
+      logger.warn('🔁 Refresh response missing token');
+      return null;
+    } catch (err: any) {
+      logger.warn('🔁 Refresh failed:', err?.response?.status, err?.message);
+      return null;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
+}
 
 // Debug logging for API URLs
 logger.info('🔧 API Configuration:');
@@ -89,11 +129,27 @@ class ApiClient {
         message: error.message,
         data: error.response?.data
       });
-      
-      if (error.response?.status === 401) {
-        logger.error('🚫 Unauthorized - Token invalid or expired');
+
+      const original = error.config;
+      const url: string = original?.url || '';
+      const isAuthExempt = AUTH_EXEMPT_PATHS.some((p) => url.includes(p));
+
+      if (error.response?.status === 401 && original && !original._retry && !isAuthExempt) {
+        original._retry = true;
+        logger.warn('🚫 Unauthorized - attempting token refresh');
+        const newToken = await tryRefresh();
+        if (newToken) {
+          original.headers = original.headers || {};
+          original.headers.Authorization = `Bearer ${newToken}`;
+          // retry using the same instance (preserves baseURL + interceptors for logging)
+          const instance = original.baseURL?.startsWith(AUTH_API_URL) ? this.authClient : this.client;
+          return instance.request(original);
+        }
+        logger.error('🚫 Refresh failed - forcing logout');
         await SecureStorage.deleteItemAsync('auth_token');
-        // Redirect to login or refresh token
+        await SecureStorage.deleteItemAsync('auth_refresh_token');
+        await SecureStorage.deleteItemAsync('auth_user');
+        authEvents.emit('forceLogout');
       }
       return Promise.reject(error);
     };

@@ -12,12 +12,12 @@ import {
   Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
-import { CompositeNavigationProp } from '@react-navigation/native';
+import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useAuth } from '../../contexts/AuthContext';
 import { MainStackParamList, TabParamList } from '../../navigation/MainNavigator';
+import { useI18n } from '../../i18n';
 
 type ChangePasswordScreenNavigationProp = CompositeNavigationProp<
   StackNavigationProp<MainStackParamList, 'ChangePassword'>,
@@ -63,9 +63,12 @@ const PasswordInput: React.FC<{
   </View>
 ));
 
+PasswordInput.displayName = 'PasswordInput';
+
 export function ChangePasswordScreen() {
   const navigation = useNavigation<ChangePasswordScreenNavigationProp>();
   const { changePassword } = useAuth();
+  const { t } = useI18n();
   
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -90,23 +93,23 @@ export function ChangePasswordScreen() {
 
   const validatePasswords = (): string | null => {
     if (!oldPassword.trim()) {
-      return 'Inserisci la password corrente';
+      return t('account.currentPasswordRequired');
     }
     
     if (!newPassword.trim()) {
-      return 'Inserisci la nuova password';
+      return t('account.newPasswordRequired');
     }
     
     if (newPassword.length < 6) {
-      return 'La nuova password deve essere di almeno 6 caratteri';
+      return t('account.newPasswordTooShort');
     }
     
     if (newPassword !== confirmPassword) {
-      return 'Le password non coincidono';
+      return t('account.passwordsDoNotMatch');
     }
     
     if (oldPassword === newPassword) {
-      return 'La nuova password deve essere diversa da quella corrente';
+      return t('account.passwordMustBeDifferent');
     }
 
     return null;
@@ -115,7 +118,7 @@ export function ChangePasswordScreen() {
   const handleSubmit = async () => {
     const validationError = validatePasswords();
     if (validationError) {
-      Alert.alert('Errore', validationError);
+      Alert.alert(t('common.error'), validationError);
       return;
     }
 
@@ -123,13 +126,13 @@ export function ChangePasswordScreen() {
       setLoading(true);
       await changePassword(oldPassword, newPassword);
       Alert.alert(
-        'Successo', 
-        'Password cambiata con successo!',
+        t('common.success'),
+        t('account.changeSuccess'),
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Errore durante il cambio password';
-      Alert.alert('Errore', errorMessage);
+      const errorMessage = error instanceof Error ? error.message : t('account.changeError');
+      Alert.alert(t('common.error'), errorMessage);
     } finally {
       setLoading(false);
     }
@@ -150,7 +153,7 @@ export function ChangePasswordScreen() {
         >
           <MaterialIcons name="arrow-back" size={24} color="#007AFF" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Cambia Password</Text>
+        <Text style={styles.headerTitle}>{t('account.changePassword')}</Text>
         <View style={styles.headerRight} />
       </View>
 
@@ -170,18 +173,18 @@ export function ChangePasswordScreen() {
               <MaterialIcons name="lock" size={64} color="#007AFF" />
             </View>
             <Text style={styles.description}>
-              Per modificare la tua password, inserisci la password corrente e la nuova password che desideri utilizzare.
+              {t('account.changePasswordDescription')}
             </Text>
           </View>
 
           {/* Form */}
           <View style={styles.formContainer}>
             <View style={styles.fieldContainer}>
-              <Text style={styles.label}>Password Corrente</Text>
+              <Text style={styles.label}>{t('account.currentPassword')}</Text>
               <PasswordInput
                 value={oldPassword}
                 onChangeText={setOldPassword}
-                placeholder="Inserisci la password corrente"
+                placeholder={t('account.currentPasswordPlaceholder')}
                 showPassword={showOldPassword}
                 onToggleShow={toggleOldPassword}
                 loading={loading}
@@ -190,11 +193,11 @@ export function ChangePasswordScreen() {
             </View>
 
             <View style={styles.fieldContainer}>
-              <Text style={styles.label}>Nuova Password</Text>
+              <Text style={styles.label}>{t('account.newPassword')}</Text>
               <PasswordInput
                 value={newPassword}
                 onChangeText={setNewPassword}
-                placeholder="Inserisci la nuova password"
+                placeholder={t('account.newPasswordPlaceholder')}
                 showPassword={showNewPassword}
                 onToggleShow={toggleNewPassword}
                 loading={loading}
@@ -202,11 +205,11 @@ export function ChangePasswordScreen() {
             </View>
 
             <View style={styles.fieldContainer}>
-              <Text style={styles.label}>Conferma Nuova Password</Text>
+              <Text style={styles.label}>{t('account.confirmNewPassword')}</Text>
               <PasswordInput
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
-                placeholder="Conferma la nuova password"
+                placeholder={t('account.confirmNewPasswordPlaceholder')}
                 showPassword={showConfirmPassword}
                 onToggleShow={toggleConfirmPassword}
                 loading={loading}
@@ -215,7 +218,7 @@ export function ChangePasswordScreen() {
 
             {/* Password requirements */}
             <View style={styles.requirementsContainer}>
-              <Text style={styles.requirementsTitle}>Requisiti password:</Text>
+              <Text style={styles.requirementsTitle}>{t('account.requirementsTitle')}</Text>
               
               <View style={styles.requirementItem}>
                 <MaterialIcons 
@@ -227,7 +230,7 @@ export function ChangePasswordScreen() {
                   styles.requirementText, 
                   { color: newPassword.length >= 6 ? '#28a745' : '#6c757d' }
                 ]}>
-                  Almeno 6 caratteri
+                  {t('account.minLengthRequirement')}
                 </Text>
               </View>
               
@@ -241,7 +244,7 @@ export function ChangePasswordScreen() {
                   styles.requirementText, 
                   { color: newPassword && confirmPassword && newPassword === confirmPassword ? '#28a745' : '#6c757d' }
                 ]}>
-                  Le password devono coincidere
+                  {t('account.matchRequirement')}
                 </Text>
               </View>
               
@@ -255,7 +258,7 @@ export function ChangePasswordScreen() {
                   styles.requirementText, 
                   { color: oldPassword && newPassword && oldPassword !== newPassword ? '#28a745' : '#6c757d' }
                 ]}>
-                  Diversa dalla password corrente
+                  {t('account.differentRequirement')}
                 </Text>
               </View>
             </View>
@@ -276,7 +279,7 @@ export function ChangePasswordScreen() {
               styles.submitButtonText,
               (!isFormValid || loading) && styles.submitButtonTextDisabled
             ]}>
-              {loading ? 'Caricamento...' : 'Conferma Cambio Password'}
+              {loading ? t('common.loading') : t('account.confirmChange')}
             </Text>
           </TouchableOpacity>
         </View>

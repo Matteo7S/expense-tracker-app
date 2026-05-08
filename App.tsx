@@ -1,31 +1,29 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { createStackNavigator } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, View, StyleSheet, Text } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 // Importa il nuovo sistema offline-first
 import { useAppInitialization } from './services/appInitializer';
-import { SyncStatusIndicator } from './components/SyncStatusIndicator';
-import { useNetworkState } from './hooks/useNetworkState';
 
 // Importa i servizi per l'inizializzazione
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { AuthNavigator } from './navigation/AuthNavigator';
 import { MainNavigator } from './navigation/MainNavigator';
-import { useAuth } from './contexts/AuthContext';
-
-const Stack = createStackNavigator();
+import { I18nProvider, useI18n } from './i18n';
 
 // Schermata di loading per l'inizializzazione
 function AppInitializationScreen() {
+  const { t } = useI18n();
+
   return (
     <View style={styles.loadingContainer}>
       <ActivityIndicator size="large" color="#007AFF" />
-      <Text style={styles.loadingText}>🚀 Inizializzazione app...</Text>
+      <Text style={styles.loadingText}>{t('app.initializationTitle')}</Text>
       <Text style={styles.loadingSubtext}>
-        Configurazione database e servizi offline
+        {t('app.initializationSubtitle')}
       </Text>
     </View>
   );
@@ -33,12 +31,14 @@ function AppInitializationScreen() {
 
 // Schermata di errore per l'inizializzazione
 function AppErrorScreen({ error }: { error: string }) {
+  const { t } = useI18n();
+
   return (
     <View style={styles.errorContainer}>
-      <Text style={styles.errorText}>❌ Errore inizializzazione</Text>
+      <Text style={styles.errorText}>{t('app.initializationErrorTitle')}</Text>
       <Text style={styles.errorDetail}>{error}</Text>
       <Text style={styles.errorHint}>
-        Riavvia l'app per riprovare
+        {t('app.initializationErrorHint')}
       </Text>
     </View>
   );
@@ -46,8 +46,16 @@ function AppErrorScreen({ error }: { error: string }) {
 
 function AppContent() {
   const { user, loading: authLoading } = useAuth();
+  const { t, isLanguageLoaded } = useI18n();
   const appInit = useAppInitialization();
-  const networkState = useNetworkState();
+
+  if (!isLanguageLoaded) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </View>
+    );
+  }
 
   // Prima controlla se l'app è inizializzata
   if (appInit.isInitializing) {
@@ -63,7 +71,7 @@ function AppContent() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Caricamento...</Text>
+        <Text style={styles.loadingText}>{t('common.loading')}</Text>
       </View>
     );
   }
@@ -79,10 +87,14 @@ function AppContent() {
 export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <AuthProvider>
-        <StatusBar style="auto" />
-        <AppContent />
-      </AuthProvider>
+      <SafeAreaProvider>
+        <I18nProvider>
+          <AuthProvider>
+            <StatusBar style="auto" />
+            <AppContent />
+          </AuthProvider>
+        </I18nProvider>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
