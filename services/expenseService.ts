@@ -69,6 +69,16 @@ class ExpenseService {
     ].join('|');
   }
 
+  private getServerMerchantAddress(expense: Expense): string {
+    const serverExpense = expense as any;
+    return serverExpense.merchant_address || serverExpense.merchantAddress || expense.location || '';
+  }
+
+  private getServerMerchantVat(expense: Expense): string {
+    const serverExpense = expense as any;
+    return serverExpense.merchant_vat || serverExpense.merchantVat || expense.vat || '';
+  }
+
   private deduplicateExpenses(expenses: Expense[]): Expense[] {
     const seenIds = new Set<string>();
     const seenFingerprints = new Set<string>();
@@ -189,8 +199,8 @@ class ExpenseService {
                       amount: se.amount,
                       currency: se.currency || 'EUR',
                       merchant_name: se.merchant || se.description || '',
-                      merchant_address: se.location || '',
-                      merchant_vat: se.vat || '',
+                      merchant_address: this.getServerMerchantAddress(se),
+                      merchant_vat: this.getServerMerchantVat(se),
                       category: se.category || 'other',
                       receipt_date: se.date || (se.createdAt ? new Date(se.createdAt).toISOString() : new Date().toISOString()),
                       receipt_time: '00:00',
@@ -232,6 +242,14 @@ class ExpenseService {
                   if (se.date && !existsLocally.receipt_date) updates.receipt_date = se.date;
                   if (se.amount && existsLocally.amount !== se.amount) updates.amount = se.amount;
                   if (se.merchant && !existsLocally.merchant_name) updates.merchant_name = se.merchant;
+                  const serverMerchantAddress = this.getServerMerchantAddress(se);
+                  if (serverMerchantAddress && !existsLocally.merchant_address) {
+                    updates.merchant_address = serverMerchantAddress;
+                  }
+                  const serverMerchantVat = this.getServerMerchantVat(se);
+                  if (serverMerchantVat && !existsLocally.merchant_vat) {
+                    updates.merchant_vat = serverMerchantVat;
+                  }
 
                   if (Object.keys(updates).length > 0) {
                     await databaseManager.updateExpense(existsLocally.id, updates);

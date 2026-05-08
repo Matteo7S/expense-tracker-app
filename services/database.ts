@@ -648,6 +648,9 @@ class DatabaseManager {
     const receiptImage = expense.receipt_image_url || expense.receipt_image_path || expense.receiptImages?.[0] || null;
     const archived = Boolean(expense.is_archived ?? expense.isArchived ?? expense.archived ?? false);
     const receiptDate = expense.receipt_date || expense.date || (createdAt ? String(createdAt).split('T')[0] : now.split('T')[0]);
+    const serverExpense = expense as any;
+    const merchantAddress = expense.merchant_address || serverExpense.merchantAddress || expense.location || null;
+    const merchantVat = expense.merchant_vat || serverExpense.merchantVat || expense.vat || null;
 
     const existing = await this.db.getFirstAsync<Expense>(
       'SELECT * FROM expenses WHERE server_id = ?',
@@ -667,8 +670,8 @@ class DatabaseManager {
         expense.amount || 0,
         expense.currency || 'EUR',
         expense.merchant_name || expense.merchant || expense.description || null,
-        expense.merchant_address || expense.location || null,
-        expense.merchant_vat || expense.vat || null,
+        merchantAddress,
+        merchantVat,
         expense.category || 'other',
         receiptDate,
         expense.receipt_time || '00:00',
@@ -701,8 +704,8 @@ class DatabaseManager {
       expense.amount || 0,
       expense.currency || 'EUR',
       expense.merchant_name || expense.merchant || expense.description || null,
-      expense.merchant_address || expense.location || null,
-      expense.merchant_vat || expense.vat || null,
+      merchantAddress,
+      merchantVat,
       expense.category || 'other',
       receiptDate,
       expense.receipt_time || '00:00',

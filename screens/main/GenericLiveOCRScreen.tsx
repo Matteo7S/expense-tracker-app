@@ -77,7 +77,7 @@ export function GenericLiveOCRScreen() {
   // Fields extracted by OCR but NOT shown in the verification modal — saved straight to the expense
   const [ocrSilentFields, setOcrSilentFields] = useState<{ merchantAddress?: string; merchantVat?: string }>({});
   const progressAnimation = useRef(new Animated.Value(0)).current;
-  const cameraRef = useRef(null);
+  const cameraRef = useRef<CameraView | null>(null);
   const isWeb = Platform.OS === 'web';
 
   useEffect(() => {
@@ -122,6 +122,17 @@ export function GenericLiveOCRScreen() {
     } finally {
       setIsInitializingOCR(false);
     }
+  };
+
+  const resetReceiptFlowState = () => {
+    setCapturedImage(null);
+    setShowPreview(false);
+    setShowAnalysis(false);
+    setOcrAnalysis(null);
+    setAnalysisProgress(null);
+    setVerificationData({});
+    setOcrSilentFields({});
+    progressAnimation.setValue(0);
   };
 
   const calculateAccuracy = (text: string, confidence: number): number => {
@@ -234,6 +245,7 @@ export function GenericLiveOCRScreen() {
 
     try {
       console.log('📸 Taking picture...');
+      resetReceiptFlowState();
 
       const options: CameraPictureOptions = {
         quality: 0.8,
@@ -261,12 +273,7 @@ export function GenericLiveOCRScreen() {
 
   const retakePicture = () => {
     console.log('🔄 Retaking picture...');
-    setCapturedImage(null);
-    setShowPreview(false);
-    setShowAnalysis(false);
-    setOcrAnalysis(null);
-    setAnalysisProgress(null);
-    progressAnimation.setValue(0);
+    resetReceiptFlowState();
   };
 
   const confirmAndUpload = async () => {
@@ -403,8 +410,8 @@ export function GenericLiveOCRScreen() {
         merchant_address: ocrSilentFields.merchantAddress,
         merchant_vat: ocrSilentFields.merchantVat,
         category,
-        receipt_date: confirmedData.date,
-        receipt_time: confirmedData.time,
+        receipt_date: confirmedData.date || new Date().toISOString().split('T')[0],
+        receipt_time: confirmedData.time || '00:00',
         receipt_image_path: toRelativeReceiptPath(permanentImagePath),
         extracted_data: JSON.stringify(extractedDataForSaving),
         notes: smartAnalysisAccuracy > 0 ? `Precisione OCR: ${smartAnalysisAccuracy}%` : undefined,
@@ -438,12 +445,7 @@ export function GenericLiveOCRScreen() {
           text: 'OK',
           onPress: () => {
             // Reset stato e torna alla fotocamera
-            setCapturedImage(null);
-            setShowPreview(false);
-            setShowAnalysis(false);
-            setOcrAnalysis(null);
-            setAnalysisProgress(null);
-            progressAnimation.setValue(0);
+            resetReceiptFlowState();
           }
         }]
       );
@@ -472,6 +474,8 @@ export function GenericLiveOCRScreen() {
 
   const pickImage = async () => {
     try {
+      resetReceiptFlowState();
+
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
