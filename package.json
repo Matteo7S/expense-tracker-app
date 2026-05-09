@@ -8,7 +8,9 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "test:preplay": "node ./scripts/preplay-check.js",
+    "build:android:play": "PREPLAY_REQUIRE_CLEAN=1 npm run test:preplay && eas build --platform android --profile production --non-interactive"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
