@@ -12,6 +12,8 @@ This command is the release gate. It runs `npm run test:preplay` first and only 
 
 The gate also requires a clean git tree when building, so the AAB can always be traced back to committed code.
 
+As a safety net, EAS also runs `npm run test:preplay` through the `eas-build-post-install` hook. If someone starts `eas build` directly, the remote build should still fail before producing an AAB when these checks fail.
+
 ## What the preflight checks cover
 
 - Production EAS profile creates an Android App Bundle.

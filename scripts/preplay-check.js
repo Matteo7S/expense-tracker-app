@@ -70,11 +70,13 @@ console.log('Running Play Console preflight checks...');
 check('Play build script requires preflight before EAS', () => {
   const pkg = readJson('package.json');
   const script = pkg.scripts && pkg.scripts['build:android:play'];
+  const easHook = pkg.scripts && pkg.scripts['eas-build-post-install'];
 
   assert(script, 'Missing npm script: build:android:play');
   requireText(script, 'PREPLAY_REQUIRE_CLEAN=1', 'Play build must require a clean git tree.');
   requireText(script, 'npm run test:preplay', 'Play build must run preplay checks first.');
   requireText(script, 'eas build --platform android --profile production --non-interactive', 'Play build must use the production Android EAS profile.');
+  assert.strictEqual(easHook, 'npm run test:preplay', 'EAS remote builds must also run the preplay checks.');
 });
 
 check('Git tree is clean when building for Play', () => {

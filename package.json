@@ -10,7 +10,8 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "test:preplay": "node ./scripts/preplay-check.js",
-    "build:android:play": "PREPLAY_REQUIRE_CLEAN=1 npm run test:preplay && eas build --platform android --profile production --non-interactive"
+    "build:android:play": "PREPLAY_REQUIRE_CLEAN=1 npm run test:preplay && eas build --platform android --profile production --non-interactive",
+    "eas-build-post-install": "npm run test:preplay"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
