@@ -137,7 +137,6 @@ check('Targeted lint passes for release-critical files', () => {
     'services/expenseService.ts',
     'services/receiptService.ts',
     'services/syncManager.ts',
-    'utils/receiptLocation.ts',
   ];
 
   assert(fs.existsSync(eslintBin), 'ESLint binary not found. Run npm install first.');
@@ -201,19 +200,20 @@ check('Optional merchant location is suggested and manually clearable', () => {
   const scanner = read('screens/main/GenericLiveOCRScreen.tsx');
   const modal = read('components/DataVerificationModal.tsx');
   const database = read('services/database.ts');
-  const parser = read('utils/receiptLocation.ts');
 
-  requireText(parser, 'extractReceiptLocationCity', 'OCR city extraction must stay isolated from amount/date/merchant parsing.');
-  requireText(scanner, 'extractReceiptLocationCity(ocrAnalysis.text', 'Scanner must use the isolated OCR city parser.');
-  requireText(scanner, 'getMostRecentMerchantLocation', 'Scanner must fall back to the last saved location.');
-  requireText(scanner, "merchantLocationSource: 'history'", 'Recent-location fallback must mark the source as history.');
+  assert(!fs.existsSync(path.join(root, 'utils/receiptLocation.ts')), 'Merchant location must not be inferred from OCR.');
+  assert(!scanner.includes('extractReceiptLocationCity'), 'Scanner must not OCR-detect merchant location.');
+  requireText(scanner, 'getMostRecentMerchantLocation', 'Scanner must load the previous saved location as a suggestion.');
+  requireText(scanner, 'previousMerchantLocation: recentLocation.location', 'Previous location must be passed as a suggestion, not auto-filled.');
   requireText(scanner, 'merchant_location: confirmedData.merchantLocation', 'Confirmed location must be saved locally.');
   requireText(database, 'merchant_location TEXT', 'SQLite schema must include merchant_location.');
   requireText(database, 'merchant_location_source TEXT', 'SQLite schema must include merchant_location_source.');
   requireText(database, 'ORDER BY e.created_at DESC', 'Recent-location fallback must use the last saved expense, not the newest receipt date.');
   requireText(modal, "t('verification.location')", 'Verification modal must show the optional location field.');
-  requireText(modal, "setMerchantLocation('')", 'Verification modal must include a clear/delete action for location.');
-  requireText(modal, "merchantLocationSource: merchantLocation.trim()", 'Manual edits must mark location as manual.');
+  requireText(modal, 'handleUsePreviousLocation', 'Verification modal must let users apply the previous location.');
+  requireText(modal, 'handleAddManualLocation', 'Verification modal must let users manually enable location input with +.');
+  requireText(modal, 'handleClearLocation', 'Verification modal must include a clear/delete action for location.');
+  requireText(modal, "merchantLocationSource = trimmedLocation", 'Location source must be derived from the explicit user choice.');
 });
 
 check('Merchant address/VAT mapping accepts all server shapes', () => {

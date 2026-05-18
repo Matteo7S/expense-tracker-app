@@ -233,28 +233,34 @@ export function ExpenseDetailScreen() {
 
           {/* Merchant dall'AI */}
           {expense.merchant && (
-            <View style={styles.detailItem}>
-              <MaterialIcons name="store" size={20} color="#666" />
-              <Text style={styles.detailLabel}>{t('expenseDetail.merchant')}</Text>
-              <Text style={styles.detailValue}>{expense.merchant}</Text>
+            <View style={styles.detailItemMultiline}>
+              <View style={styles.detailHeader}>
+                <MaterialIcons name="store" size={20} color="#666" />
+                <Text style={styles.detailLabel}>{t('expenseDetail.merchant')}</Text>
+              </View>
+              <Text style={styles.detailLongValue}>{expense.merchant}</Text>
             </View>
           )}
 
           {/* Località alta / città */}
           {expense.merchantLocation && (
-            <View style={styles.detailItem}>
-              <MaterialIcons name="place" size={20} color="#666" />
-              <Text style={styles.detailLabel}>{t('expenseDetail.location')}</Text>
-              <Text style={styles.detailValue}>{expense.merchantLocation}</Text>
+            <View style={styles.detailItemMultiline}>
+              <View style={styles.detailHeader}>
+                <MaterialIcons name="place" size={20} color="#666" />
+                <Text style={styles.detailLabel}>{t('expenseDetail.location')}</Text>
+              </View>
+              <Text style={styles.detailLongValue}>{expense.merchantLocation}</Text>
             </View>
           )}
 
           {/* Location dall'AI */}
           {expense.location && !expense.merchantLocation && (
-            <View style={styles.detailItem}>
-              <MaterialIcons name="location-on" size={20} color="#666" />
-              <Text style={styles.detailLabel}>{t('expenseDetail.address')}</Text>
-              <Text style={styles.detailValue}>{expense.location}</Text>
+            <View style={styles.detailItemMultiline}>
+              <View style={styles.detailHeader}>
+                <MaterialIcons name="location-on" size={20} color="#666" />
+                <Text style={styles.detailLabel}>{t('expenseDetail.address')}</Text>
+              </View>
+              <Text style={styles.detailLongValue}>{expense.location}</Text>
             </View>
           )}
 
@@ -448,12 +454,15 @@ const styles = StyleSheet.create({
   },
   expenseInfo: {
     flex: 1,
+    minWidth: 0,
   },
   expenseDescription: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
     marginBottom: 8,
+    flexShrink: 1,
+    lineHeight: 24,
   },
   expenseAmount: {
     fontSize: 24,
@@ -473,22 +482,45 @@ const styles = StyleSheet.create({
   },
   detailItem: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
+  },
+  detailItemMultiline: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  detailHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
   },
   detailLabel: {
     fontSize: 16,
     color: '#666',
     marginLeft: 12,
     flex: 1,
+    minWidth: 0,
   },
   detailValue: {
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
     textAlign: 'right',
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
+    lineHeight: 22,
+  },
+  detailLongValue: {
+    marginLeft: 32,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    lineHeight: 22,
+    flexShrink: 1,
   },
   receiptsContainer: {
     marginHorizontal: 16,

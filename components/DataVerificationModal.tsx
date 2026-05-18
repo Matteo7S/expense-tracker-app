@@ -27,7 +27,8 @@ export interface ExtractedData {
   time?: string; // HH:MM format
   merchantName?: string;
   merchantLocation?: string;
-  merchantLocationSource?: 'ocr' | 'history' | 'manual' | string;
+  merchantLocationSource?: 'history' | 'manual' | string;
+  previousMerchantLocation?: string;
   category?: string; // Categoria identificata
   confidence?: {
     amount?: number;
@@ -69,10 +70,12 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
   const { formatDate: formatLocalizedDate, locale, t } = useI18n();
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
+  const locationInputRef = useRef<TextInput>(null);
   const [amount, setAmount] = useState<string>('');
   const [currency, setCurrency] = useState<string>('EUR');
   const [merchantName, setMerchantName] = useState<string>('');
   const [merchantLocation, setMerchantLocation] = useState<string>('');
+  const [isLocationInputEnabled, setIsLocationInputEnabled] = useState(false);
   const [category, setCategory] = useState<string>('other');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedTime, setSelectedTime] = useState<Date>(new Date());
@@ -123,6 +126,7 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
       setCurrency(extractedData.currency || 'EUR');
       setMerchantName(extractedData.merchantName || '');
       setMerchantLocation(extractedData.merchantLocation || '');
+      setIsLocationInputEnabled(Boolean(extractedData.merchantLocation));
       setCategory(extractedData.category || 'other');
 
       // Imposta la data
@@ -223,6 +227,12 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
       return;
     }
 
+    const trimmedLocation = merchantLocation.trim();
+    const previousLocation = extractedData.previousMerchantLocation?.trim();
+    const merchantLocationSource = trimmedLocation
+      ? (!isLocationInputEnabled && previousLocation && trimmedLocation === previousLocation ? 'history' : 'manual')
+      : undefined;
+
     // Prepara i dati da restituire
     const confirmedData: ExtractedData = {
       amount: numericAmount,
@@ -230,19 +240,15 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
       date: selectedDate.toISOString().split('T')[0], // YYYY-MM-DD format
       time: formatTime(selectedTime), // HH:MM format
       merchantName: merchantName.trim() || undefined,
-      merchantLocation: merchantLocation.trim() || undefined,
-      merchantLocationSource: merchantLocation.trim()
-        ? (merchantLocation !== (extractedData.merchantLocation || '') ? 'manual' : extractedData.merchantLocationSource)
-        : undefined,
+      merchantLocation: trimmedLocation || undefined,
+      merchantLocationSource,
       category: category,
       confidence: {
         amount: amount !== (extractedData.amount?.toString().replace('.', ',') || '') ? 1.0 : extractedData.confidence?.amount,
         date: 1.0, // Manual selection gets 100% confidence
         time: 1.0,
         merchant: merchantName !== (extractedData.merchantName || '') ? 1.0 : extractedData.confidence?.merchant,
-        location: merchantLocation
-          ? (merchantLocation !== (extractedData.merchantLocation || '') ? 1.0 : extractedData.confidence?.location)
-          : undefined,
+        location: merchantLocationSource === 'history' ? 0.7 : (trimmedLocation ? 1.0 : undefined),
         category: category !== (extractedData.category || 'other') ? 1.0 : extractedData.confidence?.category,
         kilometers: kilometers ? (kilometers !== (extractedData.kilometers?.toString().replace('.', ',') || '') ? 1.0 : extractedData.confidence?.kilometers) : undefined,
         fuelLiters: fuelLiters ? (fuelLiters !== (extractedData.fuelLiters?.toString().replace('.', ',') || '') ? 1.0 : extractedData.confidence?.fuelLiters) : undefined,
@@ -254,6 +260,29 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
     };
 
     onConfirm(confirmedData);
+  };
+
+  const handleUsePreviousLocation = () => {
+    const previousLocation = extractedData.previousMerchantLocation?.trim();
+    if (!previousLocation) {
+      return;
+    }
+
+    setMerchantLocation(previousLocation);
+    setIsLocationInputEnabled(false);
+  };
+
+  const handleAddManualLocation = () => {
+    setMerchantLocation('');
+    setIsLocationInputEnabled(true);
+    setTimeout(() => {
+      locationInputRef.current?.focus();
+    }, 100);
+  };
+
+  const handleClearLocation = () => {
+    setMerchantLocation('');
+    setIsLocationInputEnabled(false);
   };
 
   const handleCancel = () => {
@@ -436,45 +465,54 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
           <View style={styles.fieldContainer}>
             <View style={styles.fieldHeader}>
               <Text style={styles.fieldLabel}>{t('verification.location')}</Text>
-              <View style={styles.confidenceIndicator}>
-                <View style={[
-                  styles.confidenceDot,
-                  { backgroundColor: getConfidenceColor(extractedData.confidence?.location) }
-                ]} />
-                <Text style={styles.confidenceText}>
-                  {getConfidenceText(extractedData.confidence?.location)}
-                </Text>
-              </View>
             </View>
-            <View style={[
-              styles.locationInputRow,
-              {
-                borderColor: getConfidenceColor(extractedData.confidence?.location),
-                borderWidth: 2
-              }
-            ]}>
+            <View style={styles.locationSuggestionRow}>
+              {extractedData.previousMerchantLocation && (
+                <TouchableOpacity
+                  style={styles.previousLocationButton}
+                  onPress={handleUsePreviousLocation}
+                  disabled={isLoading}
+                >
+                  <MaterialIcons name="history" size={16} color="#0b5cad" />
+                  <Text style={styles.previousLocationText} numberOfLines={1}>
+                    {extractedData.previousMerchantLocation}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={styles.addLocationButton}
+                onPress={handleAddManualLocation}
+                disabled={isLoading}
+                accessibilityLabel={t('verification.addLocation')}
+              >
+                <MaterialIcons name="add" size={20} color="white" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.locationInputRow}>
               <TextInput
+                ref={locationInputRef}
                 style={styles.locationInput}
                 value={merchantLocation}
                 onChangeText={setMerchantLocation}
                 onFocus={() => scrollToField(330)}
                 placeholder={t('verification.locationPlaceholder')}
-                editable={!isLoading}
+                placeholderTextColor="#999"
+                editable={!isLoading && isLocationInputEnabled}
               />
               <TouchableOpacity
                 style={[
                   styles.clearLocationButton,
                   (!merchantLocation || isLoading) && styles.clearLocationButtonDisabled,
                 ]}
-                onPress={() => setMerchantLocation('')}
+                onPress={handleClearLocation}
                 disabled={!merchantLocation || isLoading}
                 accessibilityLabel={t('verification.clearLocation')}
               >
                 <MaterialIcons name="delete" size={18} color="white" />
               </TouchableOpacity>
             </View>
-            {extractedData.merchantLocationSource === 'history' && (
-              <Text style={styles.locationHint}>{t('verification.locationSuggestedFromHistory')}</Text>
+            {!isLocationInputEnabled && !merchantLocation && (
+              <Text style={styles.locationHint}>{t('verification.locationHint')}</Text>
             )}
           </View>
 
@@ -924,6 +962,40 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderWidth: 1,
     borderColor: '#e9ecef',
+  },
+  locationSuggestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  previousLocationButton: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#eef6ff',
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#b7dcff',
+  },
+  previousLocationText: {
+    flex: 1,
+    minWidth: 0,
+    marginLeft: 6,
+    color: '#0b5cad',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  addLocationButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#007AFF',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   locationInput: {
     flex: 1,

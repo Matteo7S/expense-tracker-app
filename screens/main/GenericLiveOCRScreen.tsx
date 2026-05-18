@@ -28,7 +28,6 @@ import { databaseManager } from '../../services/database';
 import { syncManager } from '../../services/syncManager';
 import { triggerExpenseRefresh } from '../../hooks/useExpenseRefresh';
 import { toRelativeReceiptPath } from '../../utils/receiptPath';
-import { extractReceiptLocationCity } from '../../utils/receiptLocation';
 import { useI18n } from '../../i18n';
 
 type GenericLiveOCRScreenNavigationProp = StackNavigationProp<MainStackParamList, 'GenericLiveOCRCamera'>;
@@ -298,11 +297,7 @@ export function GenericLiveOCRScreen() {
       confidence: {}
     };
 
-    const applyRecentLocationSuggestion = async () => {
-      if (verificationData.merchantLocation) {
-        return;
-      }
-
+    const applyPreviousLocationSuggestion = async () => {
       const recentLocation = await databaseManager.getMostRecentMerchantLocation();
       if (!recentLocation?.location) {
         return;
@@ -310,12 +305,7 @@ export function GenericLiveOCRScreen() {
 
       verificationData = {
         ...verificationData,
-        merchantLocation: recentLocation.location,
-        merchantLocationSource: 'history',
-        confidence: {
-          ...verificationData.confidence,
-          location: 0.6
-        }
+        previousMerchantLocation: recentLocation.location
       };
     };
 
@@ -346,10 +336,6 @@ export function GenericLiveOCRScreen() {
             merchantVat: extractedData.merchantVat
           });
 
-          const locationSuggestion = extractReceiptLocationCity(ocrAnalysis.text, {
-            merchantName: extractedData.merchantName,
-          });
-
           // Aggiorna i dati di verifica con i dati estratti
           verificationData = {
             amount: extractedData.amount,
@@ -357,8 +343,6 @@ export function GenericLiveOCRScreen() {
             date: extractedData.date || verificationData.date,
             time: extractedData.time || verificationData.time,
             merchantName: extractedData.merchantName || '',
-            merchantLocation: locationSuggestion?.location,
-            merchantLocationSource: locationSuggestion?.source,
             category: smartAnalysis.category?.category, // Categoria identificata
             kilometers: smartAnalysis.kilometers,
             fuelLiters: smartAnalysis.fuelLiters,
@@ -368,7 +352,6 @@ export function GenericLiveOCRScreen() {
               date: smartAnalysis.dates.length > 0 ? smartAnalysis.dates[0].confidence : undefined,
               time: smartAnalysis.dates.length > 0 ? smartAnalysis.dates[0].confidence : undefined,
               merchant: smartAnalysis.merchant?.confidence,
-              location: locationSuggestion?.confidence,
               category: smartAnalysis.category?.confidence,
               kilometers: smartAnalysis.kilometers ? 0.9 : undefined, // Assumiamo alta confidenza per regex matches
               fuelLiters: smartAnalysis.fuelLiters ? 0.9 : undefined,
@@ -383,9 +366,9 @@ export function GenericLiveOCRScreen() {
     }
 
     try {
-      await applyRecentLocationSuggestion();
+      await applyPreviousLocationSuggestion();
     } catch (error) {
-      console.warn('⚠️ Unable to apply recent location suggestion:', error);
+      console.warn('⚠️ Unable to apply previous location suggestion:', error);
     }
 
     // Mostra sempre la modal di verifica dati (solo se non è già visibile)
