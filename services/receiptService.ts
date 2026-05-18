@@ -133,6 +133,8 @@ class ReceiptService {
     merchantName?: string;
     merchantAddress?: string;
     merchantVat?: string;
+    merchantLocation?: string;
+    merchantLocationSource?: string;
     category: string;
     receiptDate: string;
     receiptTime: string;
@@ -157,6 +159,8 @@ class ReceiptService {
         merchantName: expenseData.merchantName,
         merchantAddress: expenseData.merchantAddress,
         merchantVat: expenseData.merchantVat,
+        merchantLocation: expenseData.merchantLocation,
+        merchantLocationSource: expenseData.merchantLocationSource,
         category: expenseData.category,
         receiptDate: expenseData.receiptDate,
         receiptTime: expenseData.receiptTime,
@@ -197,6 +201,8 @@ class ReceiptService {
     merchantName?: string;
     merchantAddress?: string;
     merchantVat?: string;
+    merchantLocation?: string;
+    merchantLocationSource?: string;
     category: string;
     receiptDate: string;
     receiptTime: string;
@@ -242,6 +248,8 @@ class ReceiptService {
       if (expenseData.merchantName) formData.append('merchantName', expenseData.merchantName);
       if (expenseData.merchantAddress) formData.append('merchantAddress', expenseData.merchantAddress);
       if (expenseData.merchantVat) formData.append('merchantVat', expenseData.merchantVat);
+      if (expenseData.merchantLocation) formData.append('merchantLocation', expenseData.merchantLocation);
+      if (expenseData.merchantLocationSource) formData.append('merchantLocationSource', expenseData.merchantLocationSource);
       formData.append('category', expenseData.category);
       formData.append('receiptDate', expenseData.receiptDate);
       formData.append('receiptTime', expenseData.receiptTime);
@@ -345,6 +353,8 @@ class ReceiptService {
     merchantName?: string;
     merchantAddress?: string;
     merchantVat?: string;
+    merchantLocation?: string;
+    merchantLocationSource?: string;
     category?: string;
     receiptDate?: string;
     receiptTime?: string;

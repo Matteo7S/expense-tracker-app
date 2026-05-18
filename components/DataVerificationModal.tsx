@@ -26,12 +26,15 @@ export interface ExtractedData {
   date?: string; // ISO format
   time?: string; // HH:MM format
   merchantName?: string;
+  merchantLocation?: string;
+  merchantLocationSource?: 'ocr' | 'history' | 'manual' | string;
   category?: string; // Categoria identificata
   confidence?: {
     amount?: number;
     date?: number;
     time?: number;
     merchant?: number;
+    location?: number;
     category?: number;
     kilometers?: number;
     fuelLiters?: number;
@@ -69,6 +72,7 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
   const [amount, setAmount] = useState<string>('');
   const [currency, setCurrency] = useState<string>('EUR');
   const [merchantName, setMerchantName] = useState<string>('');
+  const [merchantLocation, setMerchantLocation] = useState<string>('');
   const [category, setCategory] = useState<string>('other');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedTime, setSelectedTime] = useState<Date>(new Date());
@@ -118,6 +122,7 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
       setAmount(extractedData.amount ? extractedData.amount.toString().replace('.', ',') : '');
       setCurrency(extractedData.currency || 'EUR');
       setMerchantName(extractedData.merchantName || '');
+      setMerchantLocation(extractedData.merchantLocation || '');
       setCategory(extractedData.category || 'other');
 
       // Imposta la data
@@ -225,12 +230,19 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
       date: selectedDate.toISOString().split('T')[0], // YYYY-MM-DD format
       time: formatTime(selectedTime), // HH:MM format
       merchantName: merchantName.trim() || undefined,
+      merchantLocation: merchantLocation.trim() || undefined,
+      merchantLocationSource: merchantLocation.trim()
+        ? (merchantLocation !== (extractedData.merchantLocation || '') ? 'manual' : extractedData.merchantLocationSource)
+        : undefined,
       category: category,
       confidence: {
         amount: amount !== (extractedData.amount?.toString().replace('.', ',') || '') ? 1.0 : extractedData.confidence?.amount,
         date: 1.0, // Manual selection gets 100% confidence
         time: 1.0,
         merchant: merchantName !== (extractedData.merchantName || '') ? 1.0 : extractedData.confidence?.merchant,
+        location: merchantLocation
+          ? (merchantLocation !== (extractedData.merchantLocation || '') ? 1.0 : extractedData.confidence?.location)
+          : undefined,
         category: category !== (extractedData.category || 'other') ? 1.0 : extractedData.confidence?.category,
         kilometers: kilometers ? (kilometers !== (extractedData.kilometers?.toString().replace('.', ',') || '') ? 1.0 : extractedData.confidence?.kilometers) : undefined,
         fuelLiters: fuelLiters ? (fuelLiters !== (extractedData.fuelLiters?.toString().replace('.', ',') || '') ? 1.0 : extractedData.confidence?.fuelLiters) : undefined,
@@ -418,6 +430,52 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
               placeholder={t('verification.merchantPlaceholder')}
               editable={!isLoading}
             />
+          </View>
+
+          {/* Località (facoltativa) */}
+          <View style={styles.fieldContainer}>
+            <View style={styles.fieldHeader}>
+              <Text style={styles.fieldLabel}>{t('verification.location')}</Text>
+              <View style={styles.confidenceIndicator}>
+                <View style={[
+                  styles.confidenceDot,
+                  { backgroundColor: getConfidenceColor(extractedData.confidence?.location) }
+                ]} />
+                <Text style={styles.confidenceText}>
+                  {getConfidenceText(extractedData.confidence?.location)}
+                </Text>
+              </View>
+            </View>
+            <View style={[
+              styles.locationInputRow,
+              {
+                borderColor: getConfidenceColor(extractedData.confidence?.location),
+                borderWidth: 2
+              }
+            ]}>
+              <TextInput
+                style={styles.locationInput}
+                value={merchantLocation}
+                onChangeText={setMerchantLocation}
+                onFocus={() => scrollToField(330)}
+                placeholder={t('verification.locationPlaceholder')}
+                editable={!isLoading}
+              />
+              <TouchableOpacity
+                style={[
+                  styles.clearLocationButton,
+                  (!merchantLocation || isLoading) && styles.clearLocationButtonDisabled,
+                ]}
+                onPress={() => setMerchantLocation('')}
+                disabled={!merchantLocation || isLoading}
+                accessibilityLabel={t('verification.clearLocation')}
+              >
+                <MaterialIcons name="delete" size={18} color="white" />
+              </TouchableOpacity>
+            </View>
+            {extractedData.merchantLocationSource === 'history' && (
+              <Text style={styles.locationHint}>{t('verification.locationSuggestedFromHistory')}</Text>
+            )}
           </View>
 
           {/* Categoria (modificabile) */}
@@ -855,6 +913,40 @@ const styles = StyleSheet.create({
     color: '#212529',
     borderWidth: 1,
     borderColor: '#e9ecef',
+  },
+  locationInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    borderRadius: 12,
+    paddingLeft: 16,
+    paddingRight: 8,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  locationInput: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingRight: 10,
+    fontSize: 16,
+    color: '#212529',
+  },
+  clearLocationButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#d32f2f',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearLocationButtonDisabled: {
+    backgroundColor: '#ef9a9a',
+  },
+  locationHint: {
+    marginTop: 6,
+    fontSize: 12,
+    color: '#666',
   },
   categoryDisplay: {
     flexDirection: 'row',

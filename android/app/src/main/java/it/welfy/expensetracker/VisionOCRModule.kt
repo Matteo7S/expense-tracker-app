@@ -36,28 +36,30 @@ class VisionOCRModule(
         .addOnSuccessListener { visionText ->
           val boundingBoxes = Arguments.createArray()
           var confidenceTotal = 0.0
-          var confidenceCount = 0
+          var confidenceWeightTotal = 0.0
 
           visionText.textBlocks.forEach { block ->
             block.lines.forEach { line ->
               val frame = line.boundingBox
+              val lineConfidence = normalizeConfidence(line.confidence.toDouble())
+              val lineWeight = line.text.trim().length.coerceAtLeast(1).toDouble()
               val lineMap = Arguments.createMap().apply {
                 putString("text", line.text)
                 putDouble("x", frame?.left?.toDouble() ?: 0.0)
                 putDouble("y", frame?.top?.toDouble() ?: 0.0)
                 putDouble("width", frame?.width()?.toDouble() ?: 0.0)
                 putDouble("height", frame?.height()?.toDouble() ?: 0.0)
-                putDouble("confidence", 1.0)
+                putDouble("confidence", lineConfidence)
               }
               boundingBoxes.pushMap(lineMap)
-              confidenceTotal += 1.0
-              confidenceCount += 1
+              confidenceTotal += lineConfidence * lineWeight
+              confidenceWeightTotal += lineWeight
             }
           }
 
           val result = Arguments.createMap().apply {
             putString("text", visionText.text.trim())
-            putDouble("confidence", if (confidenceCount > 0) confidenceTotal / confidenceCount else 0.0)
+            putDouble("confidence", if (confidenceWeightTotal > 0) confidenceTotal / confidenceWeightTotal else 0.0)
             putArray("boundingBoxes", boundingBoxes)
           }
 
@@ -81,6 +83,14 @@ class VisionOCRModule(
       val bitmap = BitmapFactory.decodeFile(path)
         ?: throw IllegalArgumentException("Unable to decode image file")
       InputImage.fromBitmap(bitmap, 0)
+    }
+  }
+
+  private fun normalizeConfidence(confidence: Double): Double {
+    return if (confidence.isNaN() || confidence.isInfinite()) {
+      0.0
+    } else {
+      confidence.coerceIn(0.0, 1.0)
     }
   }
 

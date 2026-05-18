@@ -53,6 +53,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
   const [currency, setCurrency] = useState('EUR');
   const [merchantName, setMerchantName] = useState('');
   const [merchantAddress, setMerchantAddress] = useState('');
+  const [merchantLocation, setMerchantLocation] = useState('');
   const [category, setCategory] = useState('');
   const [notes, setNotes] = useState('');
   const [kilometers, setKilometers] = useState('');
@@ -124,6 +125,7 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
       setCurrency(loadedExpense.currency);
       setMerchantName(loadedExpense.merchant_name || '');
       setMerchantAddress(loadedExpense.merchant_address || '');
+      setMerchantLocation(loadedExpense.merchant_location || '');
       setCategory(loadedExpense.category || '');
       setNotes(loadedExpense.notes || '');
       setKilometers(loadedExpense.kilometers ? loadedExpense.kilometers.toString() : '');
@@ -187,6 +189,8 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
         currency,
         merchant_name: merchantName,
         merchant_address: merchantAddress,
+        merchant_location: merchantLocation.trim(),
+        merchant_location_source: merchantLocation.trim() ? 'manual' : '',
         category,
         receipt_date: receiptDate.toISOString().split('T')[0], // YYYY-MM-DD
         receipt_time: receiptTime.toTimeString().split(' ')[0], // HH:MM:SS
@@ -319,6 +323,31 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
               placeholderTextColor="#999"
             />
             {errors.merchantName && <Text style={styles.errorText}>{errors.merchantName}</Text>}
+          </View>
+
+          {/* Merchant Location */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>{t('expenseForm.location')}</Text>
+            <View style={styles.locationInputRow}>
+              <TextInput
+                style={styles.locationInput}
+                value={merchantLocation}
+                onChangeText={setMerchantLocation}
+                placeholder={t('expenseForm.locationPlaceholder')}
+                placeholderTextColor="#999"
+              />
+              <TouchableOpacity
+                style={[
+                  styles.clearLocationButton,
+                  !merchantLocation && styles.clearLocationButtonDisabled,
+                ]}
+                onPress={() => setMerchantLocation('')}
+                disabled={!merchantLocation}
+                accessibilityLabel={t('verification.clearLocation')}
+              >
+                <MaterialIcons name="delete" size={18} color="white" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Merchant Address */}
@@ -667,6 +696,35 @@ const styles = StyleSheet.create({
   },
   inputError: {
     borderColor: '#dc3545',
+  },
+  locationInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    borderRadius: 12,
+    paddingLeft: 16,
+    paddingRight: 8,
+    paddingVertical: 6,
+  },
+  locationInput: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingRight: 10,
+    fontSize: 16,
+    color: '#212529',
+  },
+  clearLocationButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#d32f2f',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearLocationButtonDisabled: {
+    backgroundColor: '#ef9a9a',
   },
   errorText: {
     color: '#dc3545',

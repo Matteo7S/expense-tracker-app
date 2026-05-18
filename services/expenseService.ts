@@ -135,6 +135,8 @@ class ExpenseService {
           updatedAt: new Date(expense.updated_at),
           merchant: expense.merchant_name,
           location: expense.merchant_address,
+          merchantLocation: expense.merchant_location,
+          merchantLocationSource: expense.merchant_location_source,
           vat: expense.merchant_vat,
           date: expense.receipt_date,
           note: expense.notes
@@ -201,6 +203,8 @@ class ExpenseService {
                       merchant_name: se.merchant || se.description || '',
                       merchant_address: this.getServerMerchantAddress(se),
                       merchant_vat: this.getServerMerchantVat(se),
+                      merchant_location: (se as any).merchant_location || (se as any).merchantLocation || null,
+                      merchant_location_source: (se as any).merchant_location_source || (se as any).merchantLocationSource || null,
                       category: se.category || 'other',
                       receipt_date: se.date || (se.createdAt ? new Date(se.createdAt).toISOString() : new Date().toISOString()),
                       receipt_time: '00:00',
@@ -249,6 +253,11 @@ class ExpenseService {
                   const serverMerchantVat = this.getServerMerchantVat(se);
                   if (serverMerchantVat && !existsLocally.merchant_vat) {
                     updates.merchant_vat = serverMerchantVat;
+                  }
+                  const serverMerchantLocation = (se as any).merchant_location || (se as any).merchantLocation;
+                  if (serverMerchantLocation && !existsLocally.merchant_location) {
+                    updates.merchant_location = serverMerchantLocation;
+                    updates.merchant_location_source = (se as any).merchant_location_source || (se as any).merchantLocationSource || 'ocr';
                   }
 
                   if (Object.keys(updates).length > 0) {
@@ -321,6 +330,8 @@ class ExpenseService {
           // Campi aggiuntivi per compatibilità
           merchant: localExpense.merchant_name,
           location: localExpense.merchant_address,
+          merchantLocation: localExpense.merchant_location,
+          merchantLocationSource: localExpense.merchant_location_source,
           vat: localExpense.merchant_vat,
           date: localExpense.receipt_date,
           note: localExpense.notes
@@ -654,6 +665,8 @@ class ExpenseService {
           // Campi aggiuntivi per compatibilità
           merchant: expense.merchant_name,
           location: expense.merchant_address,
+          merchantLocation: expense.merchant_location,
+          merchantLocationSource: expense.merchant_location_source,
           vat: expense.merchant_vat,
           date: expense.receipt_date,
           note: expense.notes

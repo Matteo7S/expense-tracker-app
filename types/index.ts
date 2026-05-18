@@ -35,6 +35,8 @@ export interface Expense {
   // Nuovi campi dall'analisi AI
   merchant?: string;
   location?: string;
+  merchantLocation?: string;
+  merchantLocationSource?: string;
   vat?: string;
   aiConfidence?: number;
   currency?: string;

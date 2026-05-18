@@ -132,10 +132,12 @@ check('Targeted lint passes for release-critical files', () => {
     'screens/main/ExpenseDetailScreen.tsx',
     'screens/main/ExpenseEditScreen.tsx',
     'screens/main/GenericLiveOCRScreen.tsx',
+    'components/DataVerificationModal.tsx',
     'services/database.ts',
     'services/expenseService.ts',
     'services/receiptService.ts',
     'services/syncManager.ts',
+    'utils/receiptLocation.ts',
   ];
 
   assert(fs.existsSync(eslintBin), 'ESLint binary not found. Run npm install first.');
@@ -187,6 +189,33 @@ check('OCR receipt flow resets hidden merchant fields between scans', () => {
   assert(countMatches(scanner, 'resetReceiptFlowState();') >= 3, 'Scanner reset must be used after save, retry, and new image selection.');
 });
 
+check('Android OCR confidence uses ML Kit values', () => {
+  const androidOcr = read('android/app/src/main/java/it/welfy/expensetracker/VisionOCRModule.kt');
+
+  requireText(androidOcr, 'normalizeConfidence(line.confidence.toDouble())', 'Android OCR must use ML Kit line confidence.');
+  requireText(androidOcr, 'lineConfidence * lineWeight', 'Android OCR confidence should be weighted by recognized text length.');
+  assert(!androidOcr.includes('putDouble("confidence", 1.0)'), 'Android OCR confidence must not be hardcoded to 100%.');
+});
+
+check('Optional merchant location is suggested and manually clearable', () => {
+  const scanner = read('screens/main/GenericLiveOCRScreen.tsx');
+  const modal = read('components/DataVerificationModal.tsx');
+  const database = read('services/database.ts');
+  const parser = read('utils/receiptLocation.ts');
+
+  requireText(parser, 'extractReceiptLocationCity', 'OCR city extraction must stay isolated from amount/date/merchant parsing.');
+  requireText(scanner, 'extractReceiptLocationCity(ocrAnalysis.text', 'Scanner must use the isolated OCR city parser.');
+  requireText(scanner, 'getMostRecentMerchantLocation', 'Scanner must fall back to the last saved location.');
+  requireText(scanner, "merchantLocationSource: 'history'", 'Recent-location fallback must mark the source as history.');
+  requireText(scanner, 'merchant_location: confirmedData.merchantLocation', 'Confirmed location must be saved locally.');
+  requireText(database, 'merchant_location TEXT', 'SQLite schema must include merchant_location.');
+  requireText(database, 'merchant_location_source TEXT', 'SQLite schema must include merchant_location_source.');
+  requireText(database, 'ORDER BY e.created_at DESC', 'Recent-location fallback must use the last saved expense, not the newest receipt date.');
+  requireText(modal, "t('verification.location')", 'Verification modal must show the optional location field.');
+  requireText(modal, "setMerchantLocation('')", 'Verification modal must include a clear/delete action for location.');
+  requireText(modal, "merchantLocationSource: merchantLocation.trim()", 'Manual edits must mark location as manual.');
+});
+
 check('Merchant address/VAT mapping accepts all server shapes', () => {
   assert.strictEqual(getServerMerchantAddress({ merchant_address: 'Via Roma 1' }), 'Via Roma 1');
   assert.strictEqual(getServerMerchantAddress({ merchantAddress: 'Main Street 2' }), 'Main Street 2');
@@ -214,11 +243,14 @@ check('Expense create/update sync sends merchant data and stores server id', () 
 
   assert(countMatches(sync, 'merchantAddress: expense.merchant_address') >= 2, 'Create and update sync must send merchant address.');
   assert(countMatches(sync, 'merchantVat: expense.merchant_vat') >= 2, 'Create and update sync must send merchant VAT.');
+  assert(countMatches(sync, 'merchantLocation: expense.merchant_location') >= 2, 'Create and update sync must send merchant location.');
+  assert(countMatches(sync, 'merchantLocationSource: expense.merchant_location_source') >= 2, 'Create and update sync must send merchant location source.');
   requireText(sync, 'server_id: createResult.data?.id', 'Create sync must save the returned server id locally.');
   requireText(sync, "sync_status: 'synced'", 'Successful sync must mark the local expense as synced.');
   requireText(sync, "throw new Error('Cannot update expense without server ID')", 'Server-backed updates must require server_id.');
   requireText(receipt, "formData.append('merchantAddress', expenseData.merchantAddress)", 'Multipart create must include merchant address.');
   requireText(receipt, "formData.append('merchantVat', expenseData.merchantVat)", 'Multipart create must include merchant VAT.');
+  requireText(receipt, "formData.append('merchantLocation', expenseData.merchantLocation)", 'Multipart create must include merchant location.');
 });
 
 check('Duplicate expense fingerprint keeps basic sync dedupe stable', () => {

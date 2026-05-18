@@ -240,8 +240,17 @@ export function ExpenseDetailScreen() {
             </View>
           )}
 
+          {/* Località alta / città */}
+          {expense.merchantLocation && (
+            <View style={styles.detailItem}>
+              <MaterialIcons name="place" size={20} color="#666" />
+              <Text style={styles.detailLabel}>{t('expenseDetail.location')}</Text>
+              <Text style={styles.detailValue}>{expense.merchantLocation}</Text>
+            </View>
+          )}
+
           {/* Location dall'AI */}
-          {expense.location && (
+          {expense.location && !expense.merchantLocation && (
             <View style={styles.detailItem}>
               <MaterialIcons name="location-on" size={20} color="#666" />
               <Text style={styles.detailLabel}>{t('expenseDetail.address')}</Text>

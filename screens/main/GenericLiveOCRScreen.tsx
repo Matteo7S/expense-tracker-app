@@ -28,6 +28,7 @@ import { databaseManager } from '../../services/database';
 import { syncManager } from '../../services/syncManager';
 import { triggerExpenseRefresh } from '../../hooks/useExpenseRefresh';
 import { toRelativeReceiptPath } from '../../utils/receiptPath';
+import { extractReceiptLocationCity } from '../../utils/receiptLocation';
 import { useI18n } from '../../i18n';
 
 type GenericLiveOCRScreenNavigationProp = StackNavigationProp<MainStackParamList, 'GenericLiveOCRCamera'>;
@@ -297,6 +298,27 @@ export function GenericLiveOCRScreen() {
       confidence: {}
     };
 
+    const applyRecentLocationSuggestion = async () => {
+      if (verificationData.merchantLocation) {
+        return;
+      }
+
+      const recentLocation = await databaseManager.getMostRecentMerchantLocation();
+      if (!recentLocation?.location) {
+        return;
+      }
+
+      verificationData = {
+        ...verificationData,
+        merchantLocation: recentLocation.location,
+        merchantLocationSource: 'history',
+        confidence: {
+          ...verificationData.confidence,
+          location: 0.6
+        }
+      };
+    };
+
     // Prova ad eseguire l'analisi smart se disponibile
     try {
       let smartAnalysis: SmartAnalysisResult | null = null;
@@ -324,6 +346,10 @@ export function GenericLiveOCRScreen() {
             merchantVat: extractedData.merchantVat
           });
 
+          const locationSuggestion = extractReceiptLocationCity(ocrAnalysis.text, {
+            merchantName: extractedData.merchantName,
+          });
+
           // Aggiorna i dati di verifica con i dati estratti
           verificationData = {
             amount: extractedData.amount,
@@ -331,6 +357,8 @@ export function GenericLiveOCRScreen() {
             date: extractedData.date || verificationData.date,
             time: extractedData.time || verificationData.time,
             merchantName: extractedData.merchantName || '',
+            merchantLocation: locationSuggestion?.location,
+            merchantLocationSource: locationSuggestion?.source,
             category: smartAnalysis.category?.category, // Categoria identificata
             kilometers: smartAnalysis.kilometers,
             fuelLiters: smartAnalysis.fuelLiters,
@@ -340,6 +368,7 @@ export function GenericLiveOCRScreen() {
               date: smartAnalysis.dates.length > 0 ? smartAnalysis.dates[0].confidence : undefined,
               time: smartAnalysis.dates.length > 0 ? smartAnalysis.dates[0].confidence : undefined,
               merchant: smartAnalysis.merchant?.confidence,
+              location: locationSuggestion?.confidence,
               category: smartAnalysis.category?.confidence,
               kilometers: smartAnalysis.kilometers ? 0.9 : undefined, // Assumiamo alta confidenza per regex matches
               fuelLiters: smartAnalysis.fuelLiters ? 0.9 : undefined,
@@ -351,6 +380,12 @@ export function GenericLiveOCRScreen() {
     } catch (error) {
       console.error('❌ Error processing receipt:', error);
       console.log('📋 Continuing with manual data entry due to analysis error');
+    }
+
+    try {
+      await applyRecentLocationSuggestion();
+    } catch (error) {
+      console.warn('⚠️ Unable to apply recent location suggestion:', error);
     }
 
     // Mostra sempre la modal di verifica dati (solo se non è già visibile)
@@ -398,6 +433,8 @@ export function GenericLiveOCRScreen() {
       const extractedDataForSaving = {
         originalText: ocrAnalysis?.text || '',
         overallAccuracy: ocrAnalysis?.accuracy || 0,
+        merchantLocation: confirmedData.merchantLocation,
+        merchantLocationSource: confirmedData.merchantLocationSource,
         // Includi altri dati dall'analisi smart se disponibili
       };
 
@@ -409,6 +446,8 @@ export function GenericLiveOCRScreen() {
         merchant_name: confirmedData.merchantName,
         merchant_address: ocrSilentFields.merchantAddress,
         merchant_vat: ocrSilentFields.merchantVat,
+        merchant_location: confirmedData.merchantLocation,
+        merchant_location_source: confirmedData.merchantLocationSource,
         category,
         receipt_date: confirmedData.date || new Date().toISOString().split('T')[0],
         receipt_time: confirmedData.time || '00:00',

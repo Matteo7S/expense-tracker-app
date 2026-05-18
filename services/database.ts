@@ -35,6 +35,8 @@ export interface Expense {
   merchant_name?: string;
   merchant_address?: string;
   merchant_vat?: string;
+  merchant_location?: string;
+  merchant_location_source?: 'ocr' | 'history' | 'manual' | string;
   category?: string;
   receipt_date: string; // Data dello scontrino
   receipt_time?: string; // Ora dello scontrino
@@ -132,6 +134,8 @@ class DatabaseManager {
         merchant_name TEXT,
         merchant_address TEXT,
         merchant_vat TEXT,
+        merchant_location TEXT,
+        merchant_location_source TEXT,
         category TEXT,
         receipt_date TEXT NOT NULL,
         receipt_time TEXT,
@@ -280,6 +284,23 @@ class DatabaseManager {
         console.log('⚠️ Migration 4 skipped: Columns might already exist');
       }
       await this.setDbVersion(5);
+    }
+
+    // Migrazione 5: località esercente separata dall'indirizzo completo
+    if (currentVersion <= 5) {
+      console.log('📊 Running migration 5: Adding merchant_location columns');
+      await this.addColumnIfMissing('expenses', 'merchant_location', 'TEXT');
+      await this.addColumnIfMissing('expenses', 'merchant_location_source', 'TEXT');
+      console.log('✅ Migration 5 completed: merchant location columns verified');
+      await this.setDbVersion(6);
+    }
+  }
+
+  private async addColumnIfMissing(tableName: string, columnName: string, columnType: string): Promise<void> {
+    try {
+      await this.db?.execAsync(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnType}`);
+    } catch {
+      console.log(`⚠️ Column ${tableName}.${columnName} already exists or could not be added`);
     }
   }
 
@@ -579,10 +600,10 @@ class DatabaseManager {
     await this.db.runAsync(`
       INSERT INTO expenses (
         id, expense_report_id, amount, currency, merchant_name, merchant_address,
-        merchant_vat, category, receipt_date, receipt_time, receipt_image_path,
+        merchant_vat, merchant_location, merchant_location_source, category, receipt_date, receipt_time, receipt_image_path,
         receipt_image_url, receipt_thumbnail_url, extracted_data, notes, created_at, updated_at,
         is_archived, server_id, sync_status, last_sync, kilometers, fuel_liters, fuel_type
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       fullExpense.id,
       fullExpense.expense_report_id,
@@ -591,6 +612,8 @@ class DatabaseManager {
       fullExpense.merchant_name || null,
       fullExpense.merchant_address || null,
       fullExpense.merchant_vat || null,
+      fullExpense.merchant_location || null,
+      fullExpense.merchant_location_source || null,
       fullExpense.category || null,
       fullExpense.receipt_date,
       fullExpense.receipt_time || null,
@@ -651,6 +674,8 @@ class DatabaseManager {
     const serverExpense = expense as any;
     const merchantAddress = expense.merchant_address || serverExpense.merchantAddress || expense.location || null;
     const merchantVat = expense.merchant_vat || serverExpense.merchantVat || expense.vat || null;
+    const merchantLocation = expense.merchant_location || serverExpense.merchantLocation || null;
+    const merchantLocationSource = expense.merchant_location_source || serverExpense.merchantLocationSource || null;
 
     const existing = await this.db.getFirstAsync<Expense>(
       'SELECT * FROM expenses WHERE server_id = ?',
@@ -661,7 +686,7 @@ class DatabaseManager {
       await this.db.runAsync(`
         UPDATE expenses
         SET expense_report_id = ?, amount = ?, currency = ?, merchant_name = ?, merchant_address = ?,
-            merchant_vat = ?, category = ?, receipt_date = ?, receipt_time = ?, receipt_image_path = ?,
+            merchant_vat = ?, merchant_location = ?, merchant_location_source = ?, category = ?, receipt_date = ?, receipt_time = ?, receipt_image_path = ?,
             receipt_image_url = ?, notes = ?, updated_at = ?, is_archived = ?, sync_status = ?,
             last_sync = ?, kilometers = ?, fuel_liters = ?, fuel_type = ?
         WHERE id = ?
@@ -672,6 +697,8 @@ class DatabaseManager {
         expense.merchant_name || expense.merchant || expense.description || null,
         merchantAddress,
         merchantVat,
+        merchantLocation,
+        merchantLocationSource,
         expense.category || 'other',
         receiptDate,
         expense.receipt_time || '00:00',
@@ -694,10 +721,10 @@ class DatabaseManager {
     await this.db.runAsync(`
       INSERT INTO expenses (
         id, expense_report_id, amount, currency, merchant_name, merchant_address,
-        merchant_vat, category, receipt_date, receipt_time, receipt_image_path,
+        merchant_vat, merchant_location, merchant_location_source, category, receipt_date, receipt_time, receipt_image_path,
         receipt_image_url, receipt_thumbnail_url, extracted_data, notes, created_at, updated_at,
         is_archived, server_id, sync_status, last_sync, kilometers, fuel_liters, fuel_type
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       localId,
       localReportId,
@@ -706,6 +733,8 @@ class DatabaseManager {
       expense.merchant_name || expense.merchant || expense.description || null,
       merchantAddress,
       merchantVat,
+      merchantLocation,
+      merchantLocationSource,
       expense.category || 'other',
       receiptDate,
       expense.receipt_time || '00:00',
@@ -741,6 +770,39 @@ class DatabaseManager {
       ...expense,
       is_archived: Boolean(expense.is_archived)
     }));
+  }
+
+  async getMostRecentMerchantLocation(): Promise<{ location: string; source?: string } | null> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const userFilter = this.currentUserId
+      ? 'AND er.user_id = ?'
+      : '';
+    const params = this.currentUserId ? [this.currentUserId] : [];
+
+    const row = await this.db.getFirstAsync<{ merchant_location: string; merchant_location_source?: string }>(
+      `
+        SELECT e.merchant_location, e.merchant_location_source
+        FROM expenses e
+        JOIN expense_reports er ON er.id = e.expense_report_id
+        WHERE e.is_archived = 0
+          AND e.merchant_location IS NOT NULL
+          AND TRIM(e.merchant_location) <> ''
+          ${userFilter}
+        ORDER BY e.created_at DESC, e.updated_at DESC
+        LIMIT 1
+      `,
+      params
+    );
+
+    if (!row?.merchant_location) {
+      return null;
+    }
+
+    return {
+      location: row.merchant_location,
+      source: row.merchant_location_source || undefined
+    };
   }
 
   async getExpenseById(id: string): Promise<Expense | null> {
