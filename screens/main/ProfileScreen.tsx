@@ -75,7 +75,16 @@ export function ProfileScreen() {
 
   const handleSync = async () => {
     try {
-      await syncManager.forceSyncNow();
+      const result = await syncManager.forceSyncNow();
+
+      if (result.errorCount > 0 || result.failedCount > 0 || result.pendingSync > 0) {
+        const details = result.lastError
+          ? `${t('profile.syncErrorMessage')}\n\n${result.lastError}`
+          : t('profile.syncErrorMessage');
+        Alert.alert(t('profile.syncErrorTitle'), details);
+        return;
+      }
+
       Alert.alert(t('profile.syncSuccessTitle'), t('profile.syncSuccessMessage'));
     } catch (error) {
       Alert.alert(

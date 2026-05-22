@@ -32,8 +32,17 @@ export interface SyncStats {
   errors: number;
 }
 
+export interface SyncRunResult {
+  syncedCount: number;
+  errorCount: number;
+  pendingSync: number;
+  failedCount: number;
+  lastError?: string;
+}
+
 class SyncManager {
   private isRunning = false;
+  private currentSyncPromise: Promise<SyncRunResult> | null = null;
   private hasRequeued = false;
   private syncIntervalId: NodeJS.Timeout | null = null;
   private listeners: ((stats: SyncStats) => void)[] = [];
@@ -134,11 +143,27 @@ class SyncManager {
   /**
    * Sincronizza tutto nella coda
    */
-  async syncAll(): Promise<void> {
-    if (this.isRunning) {
-      console.log('🔄 Sync already running, skipping...');
-      return;
+  async syncAll(): Promise<SyncRunResult> {
+    if (this.currentSyncPromise) {
+      console.log('🔄 Sync already running, waiting for current run...');
+      return this.currentSyncPromise;
     }
+
+    this.currentSyncPromise = this.executeSyncAll();
+    try {
+      return await this.currentSyncPromise;
+    } finally {
+      this.currentSyncPromise = null;
+    }
+  }
+
+  private async executeSyncAll(): Promise<SyncRunResult> {
+    let result: SyncRunResult = {
+      syncedCount: 0,
+      errorCount: 0,
+      pendingSync: this.stats.pendingSync,
+      failedCount: this.stats.errors
+    };
 
     if (!networkManager.isOnline()) {
       console.log('🌐 No internet connection, sync skipped');
@@ -146,7 +171,11 @@ class SyncManager {
       this.stats.isRunning = false;
       await this.updateStats();
       this.notifyListeners();
-      return;
+      return {
+        ...result,
+        pendingSync: this.stats.pendingSync,
+        failedCount: this.stats.errors
+      };
     }
 
     this.isRunning = true;
@@ -174,7 +203,12 @@ class SyncManager {
         this.stats.isRunning = false;
         await this.updateStats();
         this.notifyListeners();
-        return;
+        return {
+          syncedCount: 0,
+          errorCount: 0,
+          pendingSync: this.stats.pendingSync,
+          failedCount: this.stats.errors
+        };
       }
 
       // Ordina la coda: prima expense_reports, poi expenses
@@ -190,6 +224,7 @@ class SyncManager {
 
       let syncedCount = 0;
       let errorCount = 0;
+      let lastError: string | undefined;
 
       for (const item of sortedQueue) {
         try {
@@ -200,13 +235,14 @@ class SyncManager {
         } catch (error) {
           console.error(`❌ Failed to sync item ${item.id}:`, error);
           errorCount++;
+          lastError = error instanceof Error ? error.message : String(error);
 
           // Incrementa tentativi
           const newAttempts = item.attempts + 1;
           await databaseManager.updateSyncQueueItem(
             item.id,
             newAttempts,
-            error instanceof Error ? error.message : String(error)
+            lastError
           );
 
           // Rimuovi item dopo 5 tentativi falliti e segna come failed
@@ -217,23 +253,46 @@ class SyncManager {
             if (item.table_name === 'expense_reports' || item.table_name === 'expenses') {
               await databaseManager.updateRecordSyncStatus(item.table_name, item.record_id, 'failed');
             }
+          } else if (item.table_name === 'expense_reports' || item.table_name === 'expenses') {
+            await databaseManager.updateRecordSyncStatus(item.table_name, item.record_id, 'error');
           }
         }
       }
 
       console.log(`🔄 Sync completed: ${syncedCount} synced, ${errorCount} errors`);
       this.stats.errors = errorCount;
-      this.stats.lastSync = new Date().toISOString();
+      if (syncedCount > 0) {
+        this.stats.lastSync = new Date().toISOString();
+      }
+
+      result = {
+        syncedCount,
+        errorCount,
+        pendingSync: this.stats.pendingSync,
+        failedCount: this.stats.errors,
+        lastError
+      };
 
     } catch (error) {
       console.error('❌ Sync process failed:', error);
       this.stats.errors++;
+      result = {
+        syncedCount: 0,
+        errorCount: 1,
+        pendingSync: this.stats.pendingSync,
+        failedCount: this.stats.errors,
+        lastError: error instanceof Error ? error.message : String(error)
+      };
     } finally {
       this.isRunning = false;
       this.stats.isRunning = false;
       await this.updateStats();
+      result.pendingSync = this.stats.pendingSync;
+      result.failedCount = this.stats.errors;
       this.notifyListeners();
     }
+
+    return result;
   }
 
   /**
@@ -588,12 +647,12 @@ class SyncManager {
   /**
    * Forza una sincronizzazione immediata
    */
-  async forceSyncNow(): Promise<void> {
+  async forceSyncNow(): Promise<SyncRunResult> {
     if (!networkManager.isOnline()) {
       throw new Error('No internet connection available');
     }
 
-    await this.syncAll();
+    return this.syncAll();
   }
 
   /**
@@ -602,6 +661,7 @@ class SyncManager {
   private async updateStats(): Promise<void> {
     const queue = await databaseManager.getSyncQueue();
     this.stats.pendingSync = queue.length;
+    this.stats.errors = await databaseManager.getSyncErrorCount();
   }
 
   /**

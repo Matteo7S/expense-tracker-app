@@ -1055,6 +1055,33 @@ class DatabaseManager {
     `, [attempts, error || null, id]);
   }
 
+  async getSyncErrorCount(): Promise<number> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const row = await this.db.getFirstAsync<{ count: number }>(`
+      SELECT COUNT(*) AS count
+      FROM (
+        SELECT table_name || ':' || record_id AS record_key
+        FROM sync_queue
+        WHERE attempts > 0 OR last_error IS NOT NULL
+
+        UNION
+
+        SELECT 'expense_reports:' || id AS record_key
+        FROM expense_reports
+        WHERE sync_status IN ('error', 'failed')
+
+        UNION
+
+        SELECT 'expenses:' || id AS record_key
+        FROM expenses
+        WHERE sync_status IN ('error', 'failed')
+      )
+    `);
+
+    return Number(row?.count || 0);
+  }
+
   async getOrphanedUnsyncedExpenses(): Promise<Expense[]> {
     if (!this.db) throw new Error('Database not initialized');
 

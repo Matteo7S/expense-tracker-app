@@ -49,21 +49,21 @@ export const SyncStatusIndicator: React.FC<SyncStatusIndicatorProps> = ({
       };
     }
 
-    if (syncStats.pendingSync > 0) {
-      return {
-        text: t('sync.pending', { count: syncStats.pendingSync }),
-        color: '#f0ad4e',
-        icon: '⏳',
-        description: t('sync.pendingDescription')
-      };
-    }
-
     if (syncStats.errors > 0) {
       return {
         text: t('sync.errors'),
         color: '#dc3545',
         icon: '⚠️',
         description: t('sync.errorsDescription')
+      };
+    }
+
+    if (syncStats.pendingSync > 0) {
+      return {
+        text: t('sync.pending', { count: syncStats.pendingSync }),
+        color: '#f0ad4e',
+        icon: '⏳',
+        description: t('sync.pendingDescription')
       };
     }
 
@@ -135,7 +135,10 @@ export const SyncStatusMini: React.FC<{ style?: any }> = ({ style }) => {
     if (syncStats.isRunning) {
       return '#007bff'; // Blu per in sincronizzazione
     }
-    if (syncStats.pendingSync > 0 || syncStats.errors > 0) {
+    if (syncStats.errors > 0) {
+      return '#dc3545'; // Rosso per errori
+    }
+    if (syncStats.pendingSync > 0) {
       return '#f0ad4e'; // Arancione per problemi
     }
     return '#28a745'; // Verde per sincronizzato
