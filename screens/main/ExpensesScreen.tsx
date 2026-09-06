@@ -15,7 +15,7 @@ import {
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { MaterialIcons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { FilterDatePicker } from '../../components/FilterDatePicker';
 import { Expense, ExpenseCategory } from '../../types';
 import { expenseService } from '../../services/expenseService';
 import { MainStackParamList } from '../../navigation/MainNavigator';
@@ -85,7 +85,7 @@ function ExpenseItem({ expense, onPress, onDelete }: { expense: Expense; onPress
 
 export function ExpensesScreen() {
   const navigation = useNavigation<ExpensesScreenNavigationProp>();
-  const { formatCurrency, formatDate, locale, t } = useI18n();
+  const { formatCurrency, formatDate, t } = useI18n();
   const [defaultReportId, setDefaultReportId] = useState<string | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [allExpenses, setAllExpenses] = useState<Expense[]>([]);
@@ -97,11 +97,10 @@ export function ExpensesScreen() {
 
   // Filter states
   const [showFilterModal, setShowFilterModal] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<string>('previous_month');
+  const [activeFilter, setActiveFilter] = useState<string>('current_month');
   const [customDateFrom, setCustomDateFrom] = useState<Date | null>(null);
   const [customDateTo, setCustomDateTo] = useState<Date | null>(null);
-  const [showDateFromPicker, setShowDateFromPicker] = useState(false);
-  const [showDateToPicker, setShowDateToPicker] = useState(false);
+  const [datePickerField, setDatePickerField] = useState<'from' | 'to' | null>(null);
   const [tempCustomDateFrom, setTempCustomDateFrom] = useState<Date | null>(null);
   const [tempCustomDateTo, setTempCustomDateTo] = useState<Date | null>(null);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
@@ -120,6 +119,7 @@ export function ExpensesScreen() {
   useEffect(() => { customDateFromRef.current = customDateFrom; }, [customDateFrom]);
   useEffect(() => { customDateToRef.current = customDateTo; }, [customDateTo]);
   useEffect(() => { excludedCategoriesRef.current = excludedCategories; }, [excludedCategories]);
+  useEffect(() => { if (!showFilterModal) setDatePickerField(null); }, [showFilterModal]);
 
   useExpenseRefresh(() => {
     if (defaultReportId) loadExpenses(defaultReportId);
@@ -164,7 +164,7 @@ export function ExpensesScreen() {
           const from = new Date(cfrom);
           from.setHours(0, 0, 0, 0);
           const to = new Date(cto);
-          to.setHours(23, 59, 59);
+          to.setHours(23, 59, 59, 999);
           return { from, to };
         }
         return null;
@@ -253,11 +253,15 @@ export function ExpensesScreen() {
       Alert.alert(t('common.warning'), t('expenses.customDatesMissing'));
       return;
     }
-    setCustomDateFrom(tempCustomDateFrom);
-    setCustomDateTo(tempCustomDateTo);
     const dateRange = { from: new Date(tempCustomDateFrom), to: new Date(tempCustomDateTo) };
     dateRange.from.setHours(0, 0, 0, 0);
-    dateRange.to.setHours(23, 59, 59);
+    dateRange.to.setHours(23, 59, 59, 999);
+    if (dateRange.from > dateRange.to) {
+      Alert.alert(t('common.warning'), t('expenses.invalidDateRange'));
+      return;
+    }
+    setCustomDateFrom(tempCustomDateFrom);
+    setCustomDateTo(tempCustomDateTo);
     setExpenses(filterExpenses(allExpenses, dateRange, excludedCategories));
     setActiveFilter('custom');
     setShowFilterModal(false);
@@ -586,41 +590,31 @@ export function ExpensesScreen() {
               <Text style={styles.filterGroupTitle}>{t('expenses.customPeriod')}</Text>
               <View style={styles.customDateRow}>
                 <Text style={styles.customDateLabel}>{t('expenses.from')}</Text>
-                <TouchableOpacity style={styles.datePickerButton} onPress={() => setShowDateFromPicker(!showDateFromPicker)}>
+                <TouchableOpacity style={styles.datePickerButton} onPress={() => setDatePickerField(datePickerField === 'from' ? null : 'from')}>
                   <Text style={styles.datePickerButtonText}>{tempCustomDateFrom ? formatDate(tempCustomDateFrom) : t('expenses.selectDate')}</Text>
                   <MaterialIcons name="calendar-today" size={20} color="#007AFF" />
                 </TouchableOpacity>
               </View>
-              {showDateFromPicker && (
-                <View style={styles.datePickerSpinnerContainer}>
-                  <DateTimePicker
-                    value={tempCustomDateFrom || new Date()} mode="date" display="compact"
-                    onChange={(_, d) => { if (d) setTempCustomDateFrom(d); }}
-                    locale={locale} textColor="#000000" accentColor="#007AFF"
-                  />
-                  <TouchableOpacity style={styles.datePickerConfirmButton} onPress={() => setShowDateFromPicker(false)}>
-                    <Text style={styles.datePickerConfirmButtonText}>{t('common.confirm')}</Text>
-                  </TouchableOpacity>
-                </View>
+              {showFilterModal && datePickerField === 'from' && (
+                <FilterDatePicker
+                  value={tempCustomDateFrom}
+                  onConfirm={setTempCustomDateFrom}
+                  onClose={() => setDatePickerField(null)}
+                />
               )}
               <View style={styles.customDateRow}>
                 <Text style={styles.customDateLabel}>{t('expenses.to')}</Text>
-                <TouchableOpacity style={styles.datePickerButton} onPress={() => setShowDateToPicker(!showDateToPicker)}>
+                <TouchableOpacity style={styles.datePickerButton} onPress={() => setDatePickerField(datePickerField === 'to' ? null : 'to')}>
                   <Text style={styles.datePickerButtonText}>{tempCustomDateTo ? formatDate(tempCustomDateTo) : t('expenses.selectDate')}</Text>
                   <MaterialIcons name="calendar-today" size={20} color="#007AFF" />
                 </TouchableOpacity>
               </View>
-              {showDateToPicker && (
-                <View style={styles.datePickerSpinnerContainer}>
-                  <DateTimePicker
-                    value={tempCustomDateTo || new Date()} mode="date" display="compact"
-                    onChange={(_, d) => { if (d) setTempCustomDateTo(d); }}
-                    locale={locale} textColor="#000000" accentColor="#007AFF"
-                  />
-                  <TouchableOpacity style={styles.datePickerConfirmButton} onPress={() => setShowDateToPicker(false)}>
-                    <Text style={styles.datePickerConfirmButtonText}>{t('common.confirm')}</Text>
-                  </TouchableOpacity>
-                </View>
+              {showFilterModal && datePickerField === 'to' && (
+                <FilterDatePicker
+                  value={tempCustomDateTo}
+                  onConfirm={setTempCustomDateTo}
+                  onClose={() => setDatePickerField(null)}
+                />
               )}
               <TouchableOpacity
                 style={[styles.applyCustomFilterButton, (!tempCustomDateFrom || !tempCustomDateTo) && styles.applyCustomFilterButtonDisabled]}
@@ -778,15 +772,6 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#e0e0e0',
   },
   datePickerButtonText: { fontSize: 16, color: '#333' },
-  datePickerSpinnerContainer: {
-    backgroundColor: '#fff', borderRadius: 12, padding: 16, marginVertical: 12,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3,
-  },
-  datePickerConfirmButton: {
-    backgroundColor: '#007AFF', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8,
-    alignItems: 'center', marginTop: 12,
-  },
-  datePickerConfirmButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   applyCustomFilterButton: {
     backgroundColor: '#007AFF', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 8,
     alignItems: 'center', marginTop: 16,

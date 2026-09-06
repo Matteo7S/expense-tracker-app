@@ -129,6 +129,7 @@ export const translations = {
       categories: 'Categorie',
       clearAllFilters: 'Rimuovi Tutti i Filtri',
       customDatesMissing: 'Seleziona entrambe le date per il filtro personalizzato',
+      invalidDateRange: 'La data iniziale deve precedere o coincidere con quella finale',
     },
     archived: {
       title: 'Archivio Spese',
@@ -466,6 +467,7 @@ export const translations = {
       categories: 'Categories',
       clearAllFilters: 'Clear All Filters',
       customDatesMissing: 'Select both dates for the custom filter',
+      invalidDateRange: 'The start date must be on or before the end date',
     },
     archived: {
       title: 'Archived Expenses',
@@ -803,6 +805,7 @@ export const translations = {
       categories: 'Kategorien',
       clearAllFilters: 'Alle Filter entfernen',
       customDatesMissing: 'Wähle beide Daten für den benutzerdefinierten Filter aus',
+      invalidDateRange: 'Das Startdatum muss vor oder auf dem Enddatum liegen',
     },
     archived: {
       title: 'Archivierte Ausgaben',

@@ -128,6 +128,9 @@ check('Android privacy-sensitive permissions are intentional', () => {
 check('Targeted lint passes for release-critical files', () => {
   const eslintBin = path.join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'eslint.cmd' : 'eslint');
   const files = [
+    'components/FilterDatePicker.tsx',
+    'screens/main/ExpensesScreen.tsx',
+    'screens/main/ArchivedExpensesScreen.tsx',
     'screens/auth/LoginScreen.tsx',
     'screens/main/ExpenseDetailScreen.tsx',
     'screens/main/ExpenseEditScreen.tsx',

@@ -15,7 +15,7 @@ import {
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { MaterialIcons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { FilterDatePicker } from '../../components/FilterDatePicker';
 import { Expense, ExpenseCategory } from '../../types';
 import { expenseService } from '../../services/expenseService';
 import { databaseManager } from '../../services/database';
@@ -27,7 +27,7 @@ type ArchivedExpensesScreenNavigationProp = StackNavigationProp<MainStackParamLi
 
 export function ArchivedExpensesScreen() {
   const navigation = useNavigation<ArchivedExpensesScreenNavigationProp>();
-  const { formatDate, locale, t } = useI18n();
+  const { formatDate, t } = useI18n();
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [allExpenses, setAllExpenses] = useState<Expense[]>([]);
@@ -41,8 +41,8 @@ export function ArchivedExpensesScreen() {
   const [activeFilter, setActiveFilter] = useState<string>('all');
   const [customDateFrom, setCustomDateFrom] = useState<Date | null>(null);
   const [customDateTo, setCustomDateTo] = useState<Date | null>(null);
-  const [showDateFromPicker, setShowDateFromPicker] = useState(false);
-  const [showDateToPicker, setShowDateToPicker] = useState(false);
+  const [datePickerField, setDatePickerField] = useState<'from' | 'to' | null>(null);
+  useEffect(() => { if (!showFilterModal) setDatePickerField(null); }, [showFilterModal]);
   
   // Intelligent restore modal state
   const [showRestoreChoiceModal, setShowRestoreChoiceModal] = useState(false);
@@ -110,7 +110,8 @@ export function ArchivedExpensesScreen() {
         if (customDateFrom && customDateTo) {
           const from = new Date(customDateFrom);
           const to = new Date(customDateTo);
-          to.setHours(23, 59, 59); // Include the entire end date
+          from.setHours(0, 0, 0, 0);
+          to.setHours(23, 59, 59, 999);
           return { from, to };
         }
         return null;
@@ -132,6 +133,11 @@ export function ArchivedExpensesScreen() {
       if (filterType === 'custom') {
         Alert.alert(t('common.warning'), t('expenses.customDatesMissing'));
       }
+      return;
+    }
+
+    if (dateRange.from > dateRange.to) {
+      Alert.alert(t('common.warning'), t('expenses.invalidDateRange'));
       return;
     }
 
@@ -644,7 +650,7 @@ export function ArchivedExpensesScreen() {
                 <Text style={styles.customDateLabel}>{t('expenses.from')}</Text>
                 <TouchableOpacity
                   style={styles.datePickerButton}
-                  onPress={() => setShowDateFromPicker(true)}
+                  onPress={() => setDatePickerField(datePickerField === 'from' ? null : 'from')}
                 >
                   <Text style={styles.datePickerButtonText}>
                     {customDateFrom ? formatDate(customDateFrom) : t('expenses.selectDate')}
@@ -653,11 +659,19 @@ export function ArchivedExpensesScreen() {
                 </TouchableOpacity>
               </View>
 
+              {showFilterModal && datePickerField === 'from' && (
+                <FilterDatePicker
+                  value={customDateFrom}
+                  onConfirm={setCustomDateFrom}
+                  onClose={() => setDatePickerField(null)}
+                />
+              )}
+
               <View style={styles.customDateRow}>
                 <Text style={styles.customDateLabel}>{t('expenses.to')}</Text>
                 <TouchableOpacity
                   style={styles.datePickerButton}
-                  onPress={() => setShowDateToPicker(true)}
+                  onPress={() => setDatePickerField(datePickerField === 'to' ? null : 'to')}
                 >
                   <Text style={styles.datePickerButtonText}>
                     {customDateTo ? formatDate(customDateTo) : t('expenses.selectDate')}
@@ -665,6 +679,14 @@ export function ArchivedExpensesScreen() {
                   <MaterialIcons name="calendar-today" size={20} color="#007AFF" />
                 </TouchableOpacity>
               </View>
+
+              {showFilterModal && datePickerField === 'to' && (
+                <FilterDatePicker
+                  value={customDateTo}
+                  onConfirm={setCustomDateTo}
+                  onClose={() => setDatePickerField(null)}
+                />
+              )}
 
               <TouchableOpacity
                 style={[
@@ -700,37 +722,6 @@ export function ArchivedExpensesScreen() {
         </SafeAreaView>
       </Modal>
 
-      {/* Date Pickers */}
-      {showDateFromPicker && (
-        <DateTimePicker
-          value={customDateFrom || new Date()}
-          mode="date"
-          display="default"
-          onChange={(event, selectedDate) => {
-            setShowDateFromPicker(false);
-            if (selectedDate) {
-              setCustomDateFrom(selectedDate);
-            }
-          }}
-          locale={locale}
-        />
-      )}
-
-      {showDateToPicker && (
-        <DateTimePicker
-          value={customDateTo || new Date()}
-          mode="date"
-          display="default"
-          onChange={(event, selectedDate) => {
-            setShowDateToPicker(false);
-            if (selectedDate) {
-              setCustomDateTo(selectedDate);
-            }
-          }}
-          locale={locale}
-        />
-      )}
-      
       {/* Intelligent Restore Choice Modal */}
       <Modal
         visible={showRestoreChoiceModal}
