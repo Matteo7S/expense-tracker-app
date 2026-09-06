@@ -196,6 +196,7 @@ class ReceiptService {
    * Crea una spesa con immagine in una singola chiamata API
    */
   async createExpenseWithImage(expenseReportId: string, expenseData: {
+    localId?: string;
     amount: number;
     currency: string;
     merchantName?: string;
@@ -217,6 +218,7 @@ class ReceiptService {
       id: string;
       receiptImageUrl?: string;
       receiptThumbnailUrl?: string;
+      alreadyExisted?: boolean;
     };
     error?: string;
   }> {
@@ -236,6 +238,13 @@ class ReceiptService {
         kilometers: expenseData.kilometers
       });
       console.log('📷 [CREATE EXPENSE] Image URI:', imageUri || 'none');
+      if (!imageUri) {
+        const response = await apiClient.post<any>(`/expense-reports/${expenseReportId}/expenses`, expenseData);
+        const data = response.data || response;
+        if (!data.id) throw new Error('Server did not return an expense ID');
+        // Reapply the latest state when a JSON create is retried after an offline edit or move.
+        return { success: true, data: { id: data.id, alreadyExisted: true } };
+      }
 
       // Crea FormData per multipart request
       const formData = new FormData();
@@ -243,6 +252,7 @@ class ReceiptService {
       console.log('📦 [CREATE EXPENSE] Building FormData...');
 
       // Aggiungi i dati della spesa
+      if (expenseData.localId) formData.append('localId', expenseData.localId);
       formData.append('amount', expenseData.amount.toString());
       formData.append('currency', expenseData.currency);
       if (expenseData.merchantName) formData.append('merchantName', expenseData.merchantName);
@@ -304,7 +314,8 @@ class ReceiptService {
         data: {
           id: expenseId,
           receiptImageUrl: imageUrl,
-          receiptThumbnailUrl: thumbnailUrl
+          receiptThumbnailUrl: thumbnailUrl,
+          alreadyExisted: response.alreadyExisted === true
         }
       };
     } catch (error: any) {
@@ -409,6 +420,7 @@ class ReceiptService {
    * Crea una expense report
    */
   async createExpenseReport(data: {
+    localId?: string;
     title: string;
     description?: string;
     start_date?: string;
@@ -431,6 +443,7 @@ class ReceiptService {
       // Prepara il payload con tutti i campi per l'API
       // Converti null/undefined in stringhe vuote per evitare errori di validazione
       const payload = {
+        localId: data.localId,
         title: data.title,
         description: data.description || '',
         start_date: data.start_date,

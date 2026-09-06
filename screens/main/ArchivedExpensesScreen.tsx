@@ -276,13 +276,12 @@ export function ArchivedExpensesScreen() {
       console.log('🔍 Found expense:', {
         id: expense.id,
         reportId: expense.reportId,
-        expenseReportId: expense.expenseReportId,
         description: expense.description,
         amount: expense.amount
       });
       
       // Get the original expense report from database to check if it's archived
-      const reportId = expense.expenseReportId || expense.reportId;
+      const reportId = expense.reportId;
       console.log('🔍 Looking for original report with ID:', reportId);
       
       if (!reportId) {
@@ -333,7 +332,7 @@ export function ArchivedExpensesScreen() {
       if (!expense) return;
       
       // Restore the original report first
-      const reportId = expense.expenseReportId || expense.reportId;
+      const reportId = expense.reportId;
       await databaseManager.updateExpenseReport(reportId, {
         is_archived: false,
         sync_status: 'pending'
@@ -368,11 +367,8 @@ export function ArchivedExpensesScreen() {
       // Get or create the generic expense report
       const genericReportId = await databaseManager.getOrCreateGenericExpenseReport();
       
-      // Move the expense to the generic report and unarchive it using local update (no sync queue)
-      await databaseManager.updateExpenseLocal(expenseId, {
-        expense_report_id: genericReportId,
-        is_archived: false
-      });
+      await databaseManager.moveExpense(expenseId, genericReportId);
+      await databaseManager.updateExpenseArchiveStatus(expenseId, false);
       
       console.log('✅ Expense restored to generic report successfully');
       setShowRestoreChoiceModal(false);
@@ -397,10 +393,7 @@ export function ArchivedExpensesScreen() {
     try {
       console.log('🔁 Restoring expense only:', expenseId);
       
-      // Use local update to avoid sync queue issues
-      await databaseManager.updateExpenseLocal(expenseId, {
-        is_archived: false
-      });
+      await databaseManager.updateExpenseArchiveStatus(expenseId, false);
       
       console.log('✅ Expense restored successfully');
       

@@ -7,12 +7,12 @@ import {
   StyleSheet,
   Alert,
   RefreshControl,
-  SafeAreaView,
   ActivityIndicator,
   ScrollView,
   Modal,
 } from 'react-native';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation, useFocusEffect, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import { FilterDatePicker } from '../../components/FilterDatePicker';
@@ -21,7 +21,6 @@ import { expenseService } from '../../services/expenseService';
 import { MainStackParamList } from '../../navigation/MainNavigator';
 import { CustomAlert } from '../../components/CustomAlert';
 import { SwipeableExpenseItem } from '../../components/SwipeableExpenseItem.fallback';
-import { databaseManager } from '../../services/database';
 import { useExpenseRefresh } from '../../hooks/useExpenseRefresh';
 import { useI18n } from '../../i18n';
 
@@ -84,6 +83,7 @@ function ExpenseItem({ expense, onPress, onDelete }: { expense: Expense; onPress
 }
 
 export function ExpensesScreen() {
+  const route = useRoute<RouteProp<MainStackParamList, 'ReportExpenses'>>();
   const navigation = useNavigation<ExpensesScreenNavigationProp>();
   const { formatCurrency, formatDate, t } = useI18n();
   const [defaultReportId, setDefaultReportId] = useState<string | null>(null);
@@ -97,7 +97,7 @@ export function ExpensesScreen() {
 
   // Filter states
   const [showFilterModal, setShowFilterModal] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<string>('current_month');
+  const [activeFilter, setActiveFilter] = useState<string>(route.params.title === 'Nota Spesa' ? 'current_month' : 'all');
   const [customDateFrom, setCustomDateFrom] = useState<Date | null>(null);
   const [customDateTo, setCustomDateTo] = useState<Date | null>(null);
   const [datePickerField, setDatePickerField] = useState<'from' | 'to' | null>(null);
@@ -202,7 +202,7 @@ export function ExpensesScreen() {
 
   const initAndLoad = async () => {
     try {
-      const reportId = await databaseManager.getDefaultReportId();
+      const reportId = route.params.reportId;
       setDefaultReportId(reportId);
       await loadExpenses(reportId);
     } catch (error) {
@@ -214,7 +214,7 @@ export function ExpensesScreen() {
   useFocusEffect(useCallback(() => {
     setLoading(true);
     initAndLoad();
-  }, []));
+  }, [route.params.reportId]));
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -288,7 +288,7 @@ export function ExpensesScreen() {
   };
 
 
-  const handleCameraPress = () => navigation.navigate('GenericLiveOCRCamera');
+  const handleCameraPress = () => navigation.navigate('GenericLiveOCRCamera', { reportId: route.params.reportId });
 
   const handleExpensePress = (expenseId: string) => navigation.navigate('ExpenseDetail', { expenseId });
 
@@ -454,6 +454,10 @@ export function ExpensesScreen() {
 
         {/* Action buttons */}
         <View style={styles.actionButtons}>
+          <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('CreateExpense', { reportId: route.params.reportId })}>
+            <MaterialIcons name="add" size={24} color="white" />
+            <Text style={styles.actionButtonText}>{t('navigation.newExpense')}</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.actionButton} onPress={handleCameraPress}>
             <MaterialIcons name="camera-alt" size={24} color="white" />
             <Text style={styles.actionButtonText}>{t('expenses.scan')}</Text>

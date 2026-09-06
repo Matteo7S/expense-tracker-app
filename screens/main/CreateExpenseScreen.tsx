@@ -7,11 +7,11 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
-  SafeAreaView,
   ActivityIndicator,
   FlatList,
   Modal,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -175,7 +175,9 @@ export function CreateExpenseScreen() {
         await expenseService.updateExpense(expenseId, formData);
         Alert.alert(t('common.success'), t('expenseForm.updateSuccess'));
       } else {
-        await expenseService.createExpense(formData);
+        const reportId = route.params && 'reportId' in route.params ? route.params.reportId : undefined;
+        if (!reportId) throw new Error('Report is required');
+        await expenseService.createExpense({ ...formData, reportId });
         Alert.alert(t('common.success'), t('expenseForm.createSuccess'));
       }
 

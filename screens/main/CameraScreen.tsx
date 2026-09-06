@@ -190,7 +190,9 @@ export function CameraScreen() {
       
       console.log('📁 Image saved to:', permanentPath);
       
-      const targetReportId = await databaseManager.getDefaultReportId();
+      const targetReportId = route.params.reportId;
+      const targetReport = await databaseManager.getExpenseReportById(targetReportId);
+      if (!targetReport || targetReport.is_archived) throw new Error('Report is not available');
       
       // Crea la spesa nel database locale con dati minimi
       const expenseId = await databaseManager.createExpense({
@@ -241,7 +243,7 @@ export function CameraScreen() {
               // Reset e torna alla lista
               setCapturedImage(null);
               setShowPreview(false);
-              navigation.navigate('ExpenseReportsTabs');
+              navigation.goBack();
             }
           }
         ]

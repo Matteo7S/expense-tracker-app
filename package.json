@@ -10,6 +10,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "test:preplay": "node ./scripts/preplay-check.js",
+    "test:reports": "node --test scripts/reports.test.cjs",
     "build:android:play": "PREPLAY_REQUIRE_CLEAN=1 npm run test:preplay && eas build --platform android --profile production --non-interactive",
     "eas-build-post-install": "npm run test:preplay"
   },

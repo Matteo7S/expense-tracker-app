@@ -16,7 +16,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { DataVerificationModal, ExtractedData } from '../../components/DataVerificationModal';
 import { CameraView, CameraType, useCameraPermissions, CameraPictureOptions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -51,6 +51,7 @@ interface AnalysisProgress {
 const ACCURACY_THRESHOLD = 90;
 
 export function GenericLiveOCRScreen() {
+  const route = useRoute<RouteProp<MainStackParamList, 'GenericLiveOCRCamera'>>();
   const navigation = useNavigation<GenericLiveOCRScreenNavigationProp>();
   const { formatCurrency, t } = useI18n();
   const insets = useSafeAreaInsets();
@@ -391,7 +392,9 @@ export function GenericLiveOCRScreen() {
     try {
       console.log('💾 Saving confirmed data to local database...', confirmedData);
 
-      const targetReportId = await databaseManager.getDefaultReportId();
+      const targetReportId = route.params.reportId;
+      const targetReport = await databaseManager.getExpenseReportById(targetReportId);
+      if (!targetReport || targetReport.is_archived) throw new Error('Report is not available');
 
       console.log('📝 Saving receipt to local report ID:', targetReportId);
 
@@ -490,8 +493,7 @@ export function GenericLiveOCRScreen() {
   };
 
   const goBack = () => {
-    // Navigate to ExpenseReports screen in the tab navigator
-    navigation.navigate('ExpenseReportsTabs');
+    navigation.goBack();
   };
 
   const pickImage = async () => {

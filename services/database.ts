@@ -350,6 +350,53 @@ class DatabaseManager {
 
   // EXPENSE REPORTS CRUD
 
+  async attachExpenseServerId(id: string, serverId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    await this.db.runAsync('UPDATE expenses SET server_id = ? WHERE id = ?', [serverId, id]);
+  }
+
+  async acknowledgeSync(table: 'expenses' | 'expense_reports', id: string, version: string, serverId?: string,
+    receiptAssets: Record<string, string | null | undefined> = {}): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    const fields = ["sync_status = CASE WHEN updated_at = ? THEN 'synced' ELSE sync_status END",
+      'server_id = COALESCE(?, server_id)', 'last_sync = ?'];
+    const values: any[] = [version, serverId || null, new Date().toISOString()];
+    for (const key of ['receipt_image_url', 'receipt_thumbnail_url', 'receipt_image_path']) {
+      if (table === 'expenses' && receiptAssets[key] !== undefined) {
+        fields.push(`${key} = CASE WHEN updated_at = ? THEN ? ELSE ${key} END`);
+        values.push(version, receiptAssets[key]);
+      }
+    }
+    await this.db.runAsync(`UPDATE ${table} SET ${fields.join(', ')} WHERE id = ?`, [...values, id]);
+    const current = table === 'expenses' ? await this.getExpenseById(id) : await this.getExpenseReportById(id);
+    if (current && current.updated_at !== version) {
+      await this.addToSyncQueueInternal(table, id, 'update', current);
+    }
+  }
+
+  async moveExpense(id: string, reportId: string): Promise<void> {
+    const expense = await this.getExpenseById(id);
+    const target = await this.getExpenseReportById(reportId);
+    const source = expense && await this.getExpenseReportById(expense.expense_report_id);
+    if (!expense || !target || !source || target.is_archived ||
+        target.user_id !== this.currentUserId || source.user_id !== this.currentUserId) {
+      throw new Error('Invalid destination report');
+    }
+    if (expense.expense_report_id === reportId) return;
+    if (!this.db) throw new Error('Database not initialized');
+    await this.db.withExclusiveTransactionAsync(async tx => {
+      const current = await tx.getFirstAsync<Expense>('SELECT * FROM expenses WHERE id = ?', [expense.id]);
+      if (!current) throw new Error('Expense not found');
+      const now = new Date(Math.max(Date.now(), new Date(current.updated_at).getTime() + 1)).toISOString();
+      const moved = { ...current, expense_report_id: reportId, updated_at: now, sync_status: 'pending' };
+      await tx.runAsync("UPDATE expenses SET expense_report_id = ?, updated_at = ?, sync_status = 'pending' WHERE id = ?",
+        [reportId, now, current.id]);
+      await tx.runAsync(`INSERT INTO sync_queue (id, table_name, record_id, action, data, created_at)
+        VALUES (?, 'expenses', ?, ?, ?, ?)`,
+      [this.generateId(), current.id, current.server_id ? 'update' : 'create', JSON.stringify(moved), now]);
+    });
+  }
+
   async createExpenseReport(report: Omit<ExpenseReport, 'id' | 'created_at' | 'updated_at'>): Promise<string> {
     if (!this.db) throw new Error('Database not initialized');
 
@@ -402,9 +449,9 @@ class DatabaseManager {
     if (!this.db) throw new Error('Database not initialized');
 
     const serverId = report.id;
-    const existing = await this.db.getFirstAsync<ExpenseReport>(
-      'SELECT * FROM expense_reports WHERE server_id = ?',
-      [serverId]
+    let existing = await this.db.getFirstAsync<ExpenseReport>(
+      'SELECT * FROM expense_reports WHERE server_id = ? OR id = ?',
+      [serverId, (report as any).local_id || serverId]
     );
 
     const title = report.title || report.name || 'Nota Spesa Generica';
@@ -414,7 +461,18 @@ class DatabaseManager {
     const archived = Boolean(report.is_archived ?? report.isArchived ?? report.archived ?? false);
     const userId = report.user_id || report.userId || this.currentUserId || null;
 
+    if (!existing && !archived && title.trim().toLowerCase() === 'nota spesa generica') {
+      existing = await this.db.getFirstAsync<ExpenseReport>(
+        `SELECT * FROM expense_reports WHERE LOWER(TRIM(title)) = 'nota spesa generica'
+         AND user_id = ? AND is_archived = 0 AND server_id IS NULL ORDER BY created_at LIMIT 1`, [userId]
+      );
+    }
+
     if (existing) {
+      if (existing.sync_status !== 'synced') {
+        await this.db.runAsync('UPDATE expense_reports SET server_id = ? WHERE id = ?', [serverId, existing.id]);
+        return existing.id;
+      }
       await this.db.runAsync(`
         UPDATE expense_reports
         SET title = ?, description = ?, start_date = ?, end_date = ?, user_id = ?,
@@ -678,11 +736,15 @@ class DatabaseManager {
     const merchantLocationSource = expense.merchant_location_source || serverExpense.merchantLocationSource || null;
 
     const existing = await this.db.getFirstAsync<Expense>(
-      'SELECT * FROM expenses WHERE server_id = ?',
-      [serverId]
+      'SELECT * FROM expenses WHERE server_id = ? OR id = ?',
+      [serverId, (expense as any).local_id || serverId]
     );
 
     if (existing) {
+      if (existing.sync_status !== 'synced') {
+        await this.db.runAsync('UPDATE expenses SET server_id = ? WHERE id = ?', [serverId, existing.id]);
+        return existing.id;
+      }
       await this.db.runAsync(`
         UPDATE expenses
         SET expense_report_id = ?, amount = ?, currency = ?, merchant_name = ?, merchant_address = ?,
@@ -702,7 +764,8 @@ class DatabaseManager {
         expense.category || 'other',
         receiptDate,
         expense.receipt_time || '00:00',
-        receiptImage,
+        existing.receipt_image_path && !/^https?:\/\//i.test(existing.receipt_image_path)
+          ? existing.receipt_image_path : receiptImage,
         receiptImage,
         expense.notes || expense.note || expense.description || null,
         updatedAt,
@@ -879,8 +942,8 @@ class DatabaseManager {
         action: 'update',
         data: fullExpense
       });
-    } else {
-      console.log(`🔄 Skipping sync queue for local-only expense: ${localId}`);
+    } else if (fullExpense) {
+      await this.addToSyncQueueInternal('expenses', localId, 'create', fullExpense);
     }
   }
 

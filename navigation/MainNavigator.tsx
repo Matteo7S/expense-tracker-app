@@ -3,6 +3,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import { ExpensesScreen } from '../screens/main/ExpensesScreen';
+import { ExpenseReportsScreen } from '../screens/main/ExpenseReportsScreen';
 import { ExpenseDetailScreen } from '../screens/main/ExpenseDetailScreen';
 import { CreateExpenseScreen } from '../screens/main/CreateExpenseScreen';
 import { ExpenseEditScreen } from '../screens/main/ExpenseEditScreen';
@@ -16,12 +17,13 @@ import { useI18n } from '../i18n';
 
 export type MainStackParamList = {
   ExpenseReportsTabs: undefined;
+  ReportExpenses: { reportId: string; title: string };
   ExpenseDetail: { expenseId: string };
-  CreateExpense: undefined;
+  CreateExpense: { reportId: string };
   EditExpense: { expenseId: string };
-  Camera: undefined;
-  GenericCamera: undefined;
-  GenericLiveOCRCamera: undefined;
+  Camera: { reportId: string };
+  GenericCamera: { reportId: string };
+  GenericLiveOCRCamera: { reportId: string };
   ArchivedExpenses: undefined;
   ChangePassword: undefined;
 };
@@ -65,8 +67,8 @@ function TabNavigator() {
     >
       <Tab.Screen
         name="Expenses"
-        component={ExpensesScreen}
-        options={{ title: t('navigation.expenses') }}
+        component={ExpenseReportsScreen}
+        options={{ title: t('reports.title') }}
       />
       <Tab.Screen
         name="GenericScan"
@@ -86,7 +88,8 @@ export function MainNavigator() {
   const { t } = useI18n();
 
   return (
-    <Stack.Navigator>
+    <Stack.Navigator initialRouteName="ExpenseReportsTabs">
+      <Stack.Screen name="ReportExpenses" component={ExpensesScreen} options={({ route }) => ({ title: route.params.title })} />
       <Stack.Screen
         name="ExpenseReportsTabs"
         component={TabNavigator}

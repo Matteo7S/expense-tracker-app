@@ -11,6 +11,7 @@ import {
   Dimensions,
   Linking,
   Platform,
+  Modal,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -20,6 +21,10 @@ import { Expense, ExpenseCategory } from '../../types';
 import { expenseService } from '../../services/expenseService';
 import { MainStackParamList } from '../../navigation/MainNavigator';
 import { useI18n } from '../../i18n';
+import { ReportList } from '../../components/ReportList';
+import { databaseManager } from '../../services/database';
+import { syncManager } from '../../services/syncManager';
+import { triggerExpenseRefresh } from '../../hooks/useExpenseRefresh';
 
 type ExpenseDetailScreenNavigationProp = StackNavigationProp<MainStackParamList, 'ExpenseDetail'>;
 type ExpenseDetailScreenRouteProp = RouteProp<MainStackParamList, 'ExpenseDetail'>;
@@ -36,6 +41,8 @@ export function ExpenseDetailScreen() {
 
   const [expense, setExpense] = useState<Expense | null>(null);
   const [loading, setLoading] = useState(true);
+  const [moving, setMoving] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
 
   useEffect(() => {
     loadExpense();
@@ -386,6 +393,9 @@ export function ExpenseDetailScreen() {
         )}
 
         {/* Action buttons */}
+        <TouchableOpacity style={[styles.editButton, { margin: 16 }]} onPress={() => setMoveOpen(true)}>
+          <Text style={styles.editButtonText}>{t('reports.move')}</Text>
+        </TouchableOpacity>
         <View style={[styles.actionButtons, { paddingBottom: bottomSafePadding + 16 }]}>
           <TouchableOpacity style={styles.editButton} onPress={handleEdit}>
             <MaterialIcons name="edit" size={24} color="white" />
@@ -397,6 +407,26 @@ export function ExpenseDetailScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+      <Modal visible={moveOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => !moving && setMoveOpen(false)}>
+        <SafeAreaView style={{ flex: 1 }}>
+          <Text style={{ padding: 20, fontSize: 22 }}>{t('reports.move')}</Text>
+          <Text style={{ paddingHorizontal: 20 }}>{t('reports.moveHint')}</Text>
+          {moving ? <ActivityIndicator /> : <ReportList excludeId={expense?.reportId} allowCreate={false} confirmSelection onSelect={async report => {
+            setMoving(true);
+            try {
+              await databaseManager.moveExpense(expenseId, report.id);
+              triggerExpenseRefresh();
+              setMoveOpen(false);
+              navigation.goBack();
+              void syncManager.syncAll().catch(() => {});
+            } catch { Alert.alert(t('common.error'), t('reports.moveError')); }
+            finally { setMoving(false); }
+          }} />}
+          <TouchableOpacity style={{ padding: 20 }} disabled={moving} onPress={() => setMoveOpen(false)}>
+            <Text>{t('common.cancel')}</Text>
+          </TouchableOpacity>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }

@@ -11,6 +11,7 @@
 import { databaseManager, ExpenseReport, Expense, SyncQueueItem } from './database';
 import { networkManager } from './networkManager';
 import { receiptService } from './receiptService';
+import { apiClient } from './api';
 import { useEffect, useState } from 'react';
 import * as FileSystem from 'expo-file-system/legacy';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
@@ -299,7 +300,11 @@ class SyncManager {
    * Sincronizza un singolo elemento
    */
   private async syncItem(item: SyncQueueItem): Promise<void> {
-    const data = JSON.parse(item.data);
+    const data = item.action === 'delete' ? JSON.parse(item.data) :
+      item.table_name === 'expenses' ? await databaseManager.getExpenseById(item.record_id) :
+        await databaseManager.getExpenseReportById(item.record_id);
+    if (!data) return;
+    if (item.action === 'create' && data.server_id) item = { ...item, action: 'update' };
 
     switch (item.table_name) {
       case 'expense_reports':
@@ -334,13 +339,14 @@ class SyncManager {
         });
 
         const createResult = await receiptService.createExpenseReport({
+          localId: report.id,
           title: report.title,  // L'API ora accetta 'title'
           description: report.description,
           start_date: report.start_date,
           end_date: report.end_date
         });
 
-        if (createResult.success) {
+        if (createResult.success && createResult.data?.id) {
           console.log('✅ Expense report created on server:', {
             localId: report.id,
             serverId: createResult.data?.id
@@ -355,11 +361,7 @@ class SyncManager {
           });
 
           // Aggiorna con server ID senza aggiungere alla coda di sync
-          await this.updateExpenseReportLocally(report.id, {
-            server_id: createResult.data?.id,
-            sync_status: 'synced',
-            last_sync: new Date().toISOString()
-          });
+          await databaseManager.acknowledgeSync('expense_reports', report.id, report.updated_at, createResult.data.id);
 
           console.log('✅ [SYNC] Local database updated successfully with server_id');
 
@@ -395,10 +397,7 @@ class SyncManager {
         });
 
         if (updateResult.success) {
-          await databaseManager.updateExpenseReport(report.id, {
-            sync_status: 'synced',
-            last_sync: new Date().toISOString()
-          });
+          await databaseManager.acknowledgeSync('expense_reports', report.id, report.updated_at);
         } else {
           throw new Error(updateResult.error);
         }
@@ -462,6 +461,7 @@ class SyncManager {
         console.log('📤 [SYNC EXPENSE] Preparing data for server...');
 
         const expenseDataForServer = {
+          localId: expense.id,
           amount: expense.amount,
           currency: expense.currency,
           merchantName: expense.merchant_name,
@@ -503,7 +503,12 @@ class SyncManager {
 
         console.log('🌐 [SYNC EXPENSE] Server response:', JSON.stringify(createResult, null, 2));
 
-        if (createResult.success) {
+        if (createResult.success && createResult.data?.id) {
+          await databaseManager.attachExpenseServerId(expense.id, createResult.data.id);
+          if (createResult.data.alreadyExisted || expense.is_archived) {
+            await this.syncExpense({ ...item, action: 'update' }, { ...expense, server_id: createResult.data.id });
+            return;
+          }
           console.log('✅ [SYNC EXPENSE] Expense created on server successfully');
           console.log('📝 [SYNC EXPENSE] Server expense ID:', createResult.data?.id);
 
@@ -529,13 +534,10 @@ class SyncManager {
 
           console.log('💾 [SYNC EXPENSE] Updating local expense with server data...');
           // Usa updateExpenseLocal per evitare di aggiungere nuovamente alla sync queue
-          await databaseManager.updateExpenseLocal(expense.id, {
-            server_id: createResult.data?.id,
+          await databaseManager.acknowledgeSync('expenses', expense.id, expense.updated_at, createResult.data?.id, {
             receipt_image_url: createResult.data?.receiptImageUrl,
             receipt_thumbnail_url: createResult.data?.receiptThumbnailUrl,
             receipt_image_path: localThumbPath,
-            sync_status: 'synced',
-            last_sync: new Date().toISOString()
           });
           console.log('✅ [SYNC EXPENSE] Local expense updated with server_id');
         } else {
@@ -584,11 +586,13 @@ class SyncManager {
         });
 
         if (updateResult.success) {
+          const moveResult = await apiClient.patch<{ success: boolean }>(`/expenses/${expense.server_id}/move`, {
+            reportId: parentReport.server_id
+          });
+          if (!moveResult.success) throw new Error('Failed to update expense report');
           // Usa updateExpenseLocal per evitare di aggiungere nuovamente alla sync queue
-          await databaseManager.updateExpenseLocal(expense.id, {
+          await databaseManager.acknowledgeSync('expenses', expense.id, expense.updated_at, undefined, {
             receipt_image_url: updatedImageUrl,
-            sync_status: 'synced',
-            last_sync: new Date().toISOString()
           });
         } else {
           throw new Error(updateResult.error);

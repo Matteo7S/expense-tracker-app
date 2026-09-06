@@ -12,6 +12,19 @@ export const languageLabels: Record<SupportedLanguage, string> = {
 
 export const translations = {
   it: {
+    reports: {
+      title: 'Note spese', new: 'Nuova nota spese', name: 'Nome della nota spese',
+      nameRequired: 'Inserisci un nome diverso da quello della nota predefinita',
+      createError: 'Impossibile creare la nota spese', default: 'Nota predefinita', open: 'Apri la nota e aggiungi spese',
+      chooseForScan: 'Scegli la nota per lo scontrino', move: 'Sposta in un’altra nota',
+      moveHint: 'La spesa verrà rimossa dalla nota corrente e sarà presente soltanto nella nota scelta.',
+      moveError: 'Impossibile spostare la spesa', noDestinations: 'Nessuna altra nota disponibile',
+      search: 'Cerca nota per nome', from: 'Dal', to: 'Al', anyDate: 'Qualsiasi data',
+      noPeriod: 'Periodo non impostato', recentFirst: 'Note aggiornate più di recente in cima',
+      periodHint: 'Incluse le sovrapposizioni parziali. Le note senza date sono escluse dal filtro.',
+      invalidPeriod: 'La data finale deve essere uguale o successiva a quella iniziale.',
+      reset: 'Azzera ricerca e periodo', noMatches: 'Nessuna nota corrisponde alla ricerca', confirmMove: 'Sposta',
+    },
     common: {
       cancel: 'Annulla',
       confirm: 'Conferma',
@@ -350,6 +363,19 @@ export const translations = {
     },
   },
   en: {
+    reports: {
+      title: 'Expense reports', new: 'New expense report', name: 'Report name',
+      nameRequired: 'Enter a name different from the default report',
+      createError: 'Unable to create the report', default: 'Default report', open: 'Open the report to add expenses',
+      chooseForScan: 'Choose a report for the receipt', move: 'Move to another report',
+      moveHint: 'The expense will be removed from the current report and will belong only to the selected report.',
+      moveError: 'Unable to move the expense', noDestinations: 'No other reports available',
+      search: 'Search reports by name', from: 'From', to: 'To', anyDate: 'Any date',
+      noPeriod: 'Period not set', recentFirst: 'Most recently updated reports first',
+      periodHint: 'Partial overlaps are included. Reports without dates are excluded from this filter.',
+      invalidPeriod: 'The end date must be on or after the start date.',
+      reset: 'Clear search and period', noMatches: 'No reports match your search', confirmMove: 'Move',
+    },
     common: {
       cancel: 'Cancel',
       confirm: 'Confirm',
@@ -688,6 +714,19 @@ export const translations = {
     },
   },
   de: {
+    reports: {
+      title: 'Spesenabrechnungen', new: 'Neue Spesenabrechnung', name: 'Name der Abrechnung',
+      nameRequired: 'Bitte einen anderen Namen als den der Standardabrechnung eingeben',
+      createError: 'Abrechnung konnte nicht erstellt werden', default: 'Standardabrechnung', open: 'Abrechnung öffnen und Ausgaben hinzufügen',
+      chooseForScan: 'Abrechnung für den Beleg auswählen', move: 'In andere Abrechnung verschieben',
+      moveHint: 'Die Ausgabe wird aus der aktuellen Abrechnung entfernt und gehört nur zur gewählten Abrechnung.',
+      moveError: 'Ausgabe konnte nicht verschoben werden', noDestinations: 'Keine andere Abrechnung verfügbar',
+      search: 'Abrechnung nach Namen suchen', from: 'Von', to: 'Bis', anyDate: 'Beliebiges Datum',
+      noPeriod: 'Zeitraum nicht festgelegt', recentFirst: 'Zuletzt aktualisierte Abrechnungen zuerst',
+      periodHint: 'Teilweise Überschneidungen werden berücksichtigt. Abrechnungen ohne Datum werden ausgeblendet.',
+      invalidPeriod: 'Das Enddatum darf nicht vor dem Startdatum liegen.',
+      reset: 'Suche und Zeitraum zurücksetzen', noMatches: 'Keine passende Abrechnung gefunden', confirmMove: 'Verschieben',
+    },
     common: {
       cancel: 'Abbrechen',
       confirm: 'Bestätigen',

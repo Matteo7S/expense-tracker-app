@@ -66,6 +66,9 @@ function buildExpenseFingerprint(expense) {
 }
 
 console.log('Running Play Console preflight checks...');
+check('Multi-report offline and sync regression tests pass', () => {
+  run(process.execPath, ['--test', 'scripts/reports.test.cjs']);
+});
 
 check('Play build script requires preflight before EAS', () => {
   const pkg = readJson('package.json');
@@ -129,6 +132,11 @@ check('Targeted lint passes for release-critical files', () => {
   const eslintBin = path.join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'eslint.cmd' : 'eslint');
   const files = [
     'components/FilterDatePicker.tsx',
+    'components/ReportList.tsx',
+    'utils/reportSelection.ts',
+    'screens/main/ExpenseReportsScreen.tsx',
+    'screens/main/GenericScanScreen.tsx',
+    'services/serverPullSyncService.ts',
     'screens/main/ExpensesScreen.tsx',
     'screens/main/ArchivedExpensesScreen.tsx',
     'screens/auth/LoginScreen.tsx',
@@ -237,7 +245,8 @@ check('Server-to-local pull sync preserves merchant address and VAT', () => {
   requireText(database, 'server_id', 'Pulled expenses must retain their server_id.');
   requireText(expenseService, 'private getServerMerchantAddress', 'Expense service must normalize merchant address from server data.');
   requireText(expenseService, 'serverExpense.merchantAddress', 'Expense service must support camelCase merchantAddress.');
-  requireText(expenseService, 'updates.merchant_address = serverMerchantAddress;', 'Existing local expenses must receive missing merchant addresses from server.');
+  requireText(expenseService, 'serverPullSyncService.pullReportExpenses(reportId)', 'Expense list must use the canonical pull sync.');
+  requireText(database, 'merchantAddress,', 'Canonical pull must persist merchant address.');
 });
 
 check('Expense create/update sync sends merchant data and stores server id', () => {
@@ -248,8 +257,8 @@ check('Expense create/update sync sends merchant data and stores server id', () 
   assert(countMatches(sync, 'merchantVat: expense.merchant_vat') >= 2, 'Create and update sync must send merchant VAT.');
   assert(countMatches(sync, 'merchantLocation: expense.merchant_location') >= 2, 'Create and update sync must send merchant location.');
   assert(countMatches(sync, 'merchantLocationSource: expense.merchant_location_source') >= 2, 'Create and update sync must send merchant location source.');
-  requireText(sync, 'server_id: createResult.data?.id', 'Create sync must save the returned server id locally.');
-  requireText(sync, "sync_status: 'synced'", 'Successful sync must mark the local expense as synced.');
+  requireText(sync, 'attachExpenseServerId(expense.id, createResult.data.id)', 'Create sync must save the returned server id locally.');
+  requireText(sync, "acknowledgeSync('expenses'", 'Successful sync must acknowledge only the sent local version.');
   requireText(sync, "throw new Error('Cannot update expense without server ID')", 'Server-backed updates must require server_id.');
   requireText(receipt, "formData.append('merchantAddress', expenseData.merchantAddress)", 'Multipart create must include merchant address.');
   requireText(receipt, "formData.append('merchantVat', expenseData.merchantVat)", 'Multipart create must include merchant VAT.');
