@@ -64,6 +64,7 @@ class ServerPullSyncService {
     const result: T[] = [];
     for (let page = 1; ; page++) {
       const response = await apiClient.get<any>(endpoint, { ...params, page, limit: 100 });
+      if (response?.success === false) throw new Error(response.error || 'Server pull failed');
       const rows = unwrapArray<T>(response, ['reports', 'expenseReports', 'expenses']);
       result.push(...rows);
       const pagination = response?.pagination || response?.data?.pagination;
@@ -73,8 +74,30 @@ class ServerPullSyncService {
   }
 
   async pullReports(): Promise<ServerExpenseReport[]> {
+    const userId = databaseManager.getCurrentUserId();
     const reports = await this.getAllPages<ServerExpenseReport>('/expense-reports');
     for (const report of reports) await databaseManager.upsertExpenseReportFromServer(report as any);
+    if (userId && databaseManager.getCurrentUserId() === userId) {
+      const serverIds = new Set(reports.map(report => report.id));
+      const candidates = await databaseManager.getEmptySyncedReports(userId);
+      for (const report of candidates) {
+        if (!report.server_id || serverIds.has(report.server_id)) continue;
+        if (databaseManager.getCurrentUserId() !== userId) break;
+        // Absence from a list is not proof of deletion (pagination, archives, filters).
+        try {
+          const response = await apiClient.get<any>(`/expense-reports/${report.server_id}`);
+          if (response.success && response.data?.id === report.server_id && databaseManager.getCurrentUserId() === userId) {
+            await databaseManager.upsertExpenseReportFromServer(response.data);
+          }
+        } catch (error: any) {
+          if (error.response?.status === 404) {
+            await databaseManager.removeEmptyMissingReport(report.id, report.server_id, userId);
+          } else {
+            console.warn('[PULL SYNC] Unable to verify missing report; keeping local copy:', report.id);
+          }
+        }
+      }
+    }
     return reports;
   }
 

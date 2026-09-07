@@ -70,6 +70,13 @@ export interface SyncQueueItem {
 class DatabaseManager {
   private db: SQLite.SQLiteDatabase | null = null;
   private currentUserId: string | null = null;
+  private reportWrites: Promise<void> = Promise.resolve();
+
+  private serializeReportWrite<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.reportWrites.then(task);
+    this.reportWrites = result.then(() => undefined, () => undefined);
+    return result;
+  }
 
   /**
    * Imposta l'utente corrente per filtrare i dati
@@ -350,6 +357,71 @@ class DatabaseManager {
 
   // EXPENSE REPORTS CRUD
 
+  async reconcileEmptyReportDuplicates(): Promise<void> {
+    return this.serializeReportWrite(() => this.reconcileEmptyReportDuplicatesInternal());
+  }
+
+  async getEmptySyncedReports(userId: string): Promise<ExpenseReport[]> {
+    if (!this.db || this.currentUserId !== userId) return [];
+    return this.db.getAllAsync<ExpenseReport>(`SELECT r.* FROM expense_reports r
+      WHERE user_id = ? AND server_id IS NOT NULL AND sync_status = 'synced'
+      AND NOT EXISTS (SELECT 1 FROM expenses e WHERE e.expense_report_id = r.id)
+      AND NOT EXISTS (SELECT 1 FROM sync_queue q WHERE q.table_name = 'expense_reports' AND q.record_id = r.id)`, [userId]);
+  }
+
+  // Call only after an authenticated GET confirms that this server report no longer exists.
+  async removeEmptyMissingReport(id: string, serverId: string, userId: string): Promise<void> {
+    return this.serializeReportWrite(async () => {
+      if (!this.db || this.currentUserId !== userId) return;
+      await this.db.runAsync(`DELETE FROM expense_reports
+        WHERE id = ? AND server_id = ? AND user_id = ? AND sync_status = 'synced'
+        AND NOT EXISTS (SELECT 1 FROM expenses WHERE expense_report_id = ?)
+        AND NOT EXISTS (SELECT 1 FROM sync_queue WHERE table_name = 'expense_reports' AND record_id = ?)`,
+      [id, serverId, userId, id, id]);
+    });
+  }
+
+  private async reconcileEmptyReportDuplicatesInternal(): Promise<void> {
+    const userId = this.currentUserId;
+    if (!this.db || !userId) return;
+    await this.db.withExclusiveTransactionAsync(async tx => {
+      const reports = await tx.getAllAsync<ExpenseReport & { expense_count: number }>(
+        `SELECT r.*, (SELECT COUNT(*) FROM expenses e WHERE e.expense_report_id = r.id) AS expense_count
+         FROM expense_reports r WHERE user_id = ? AND is_archived = 0
+         ORDER BY expense_count DESC, (server_id IS NOT NULL) DESC, created_at, id`, [userId]
+      );
+      const isDefault = (report: ExpenseReport) => report.title.trim().toLowerCase() === 'nota spesa generica';
+      const defaultIds = new Set(reports.filter(isDefault).map(report => report.server_id).filter(Boolean));
+      const retained: typeof reports = [];
+      for (const report of reports) {
+        // A title alone never identifies a user-created report; the default is the only exception.
+        const canonical = retained.find(other =>
+          (report.server_id && report.server_id === other.server_id) ||
+          (isDefault(report) && isDefault(other) && defaultIds.size <= 1));
+        if (!canonical || report.expense_count > 0) { retained.push(report); continue; }
+        const queue = await tx.getAllAsync<SyncQueueItem>(
+          "SELECT * FROM sync_queue WHERE table_name = 'expense_reports' AND record_id = ?", [report.id]
+        );
+        // Keep pending edits/deletions and ambiguous custom reports for explicit reconciliation.
+        if (queue.some(item => item.action !== 'create') ||
+            (report.sync_status !== 'synced' && !isDefault(report))) {
+          retained.push(report); continue;
+        }
+        if (!canonical.server_id && report.server_id) {
+          await tx.runAsync('UPDATE expense_reports SET server_id = ? WHERE id = ?', [report.server_id, canonical.id]);
+          canonical.server_id = report.server_id;
+        }
+        // Recheck emptiness at deletion time. This never deletes expenses or queues a server deletion.
+        const removed = await tx.runAsync(`DELETE FROM expense_reports WHERE id = ? AND user_id = ?
+          AND NOT EXISTS (SELECT 1 FROM expenses WHERE expense_report_id = ?)`, [report.id, userId, report.id]);
+        if (removed.changes) {
+          await tx.runAsync("DELETE FROM sync_queue WHERE table_name = 'expense_reports' AND record_id = ?", [report.id]);
+          console.log('[DB] Removed empty local report alias:', { alias: report.id, canonical: canonical.id });
+        }
+      }
+    });
+  }
+
   async attachExpenseServerId(id: string, serverId: string): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
     await this.db.runAsync('UPDATE expenses SET server_id = ? WHERE id = ?', [serverId, id]);
@@ -398,6 +470,10 @@ class DatabaseManager {
   }
 
   async createExpenseReport(report: Omit<ExpenseReport, 'id' | 'created_at' | 'updated_at'>): Promise<string> {
+    return this.serializeReportWrite(() => this.createExpenseReportInternal(report));
+  }
+
+  private async createExpenseReportInternal(report: Omit<ExpenseReport, 'id' | 'created_at' | 'updated_at'>): Promise<string> {
     if (!this.db) throw new Error('Database not initialized');
 
     const id = this.generateId();
@@ -446,11 +522,17 @@ class DatabaseManager {
     createdAt?: string | Date;
     updatedAt?: string | Date;
   }): Promise<string> {
+    return this.serializeReportWrite(() => this.upsertExpenseReportFromServerInternal(report));
+  }
+
+  private async upsertExpenseReportFromServerInternal(report: Parameters<DatabaseManager['upsertExpenseReportFromServer']>[0]): Promise<string> {
     if (!this.db) throw new Error('Database not initialized');
 
     const serverId = report.id;
     let existing = await this.db.getFirstAsync<ExpenseReport>(
-      'SELECT * FROM expense_reports WHERE server_id = ? OR id = ?',
+      `SELECT r.* FROM expense_reports r WHERE server_id = ? OR id = ?
+       ORDER BY (SELECT COUNT(*) FROM expenses e WHERE e.expense_report_id = r.id) DESC,
+         r.created_at, r.id LIMIT 1`,
       [serverId, (report as any).local_id || serverId]
     );
 
@@ -475,10 +557,11 @@ class DatabaseManager {
       }
       await this.db.runAsync(`
         UPDATE expense_reports
-        SET title = ?, description = ?, start_date = ?, end_date = ?, user_id = ?,
+        SET server_id = ?, title = ?, description = ?, start_date = ?, end_date = ?, user_id = ?,
             updated_at = ?, is_archived = ?, sync_status = ?, last_sync = ?
         WHERE id = ?
       `, [
+        serverId,
         title,
         report.description || null,
         report.start_date || null,
@@ -519,6 +602,8 @@ class DatabaseManager {
 
   async getExpenseReports(includeArchived = false): Promise<ExpenseReport[]> {
     if (!this.db) throw new Error('Database not initialized');
+
+    await this.reconcileEmptyReportDuplicates();
 
     console.log('📋 [DB] getExpenseReports - Current user ID:', this.currentUserId);
 
@@ -1265,6 +1350,13 @@ class DatabaseManager {
    * Ottiene o crea la nota spese generica per gli scontrini dalla funzionalità Scansiona
    */
   async getOrCreateGenericExpenseReport(): Promise<string> {
+    return this.serializeReportWrite(async () => {
+      await this.reconcileEmptyReportDuplicatesInternal();
+      return this.getOrCreateGenericExpenseReportInternal();
+    });
+  }
+
+  private async getOrCreateGenericExpenseReportInternal(): Promise<string> {
     if (!this.db) throw new Error('Database not initialized');
 
     const GENERIC_TITLE = 'Nota Spesa Generica';
@@ -1311,7 +1403,7 @@ class DatabaseManager {
 
     // Crea una nuova nota spese generica
     console.log('📋 Creating new generic expense report for user:', this.currentUserId || 'no user');
-    const genericId = await this.createExpenseReport({
+    const genericId = await this.createExpenseReportInternal({
       title: GENERIC_TITLE,
       description: 'Nota spese automatica per scontrini scansionati con la funzionalità Scansiona',
       user_id: this.currentUserId || undefined,

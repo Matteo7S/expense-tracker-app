@@ -186,6 +186,8 @@ class SyncManager {
     try {
       console.log('🔄 Starting sync process...');
 
+      await databaseManager.reconcileEmptyReportDuplicates();
+
       // Re-enqueue orphaned expenses once per app session
       if (!this.hasRequeued) {
         this.hasRequeued = true;

@@ -184,9 +184,183 @@ test('report pull traverses every page', async () => {
   const service = load('services/serverPullSyncService.ts', {
     './api': { apiClient: { get: async (_url, { page }) => ({ success: true,
       data: { data: [{ id: `report-${page}` }], pagination: { page, totalPages: 3 } } }) } },
-    './database': { databaseManager: { upsertExpenseReportFromServer: async report => saved.push(report.id) } },
+    './database': { databaseManager: {
+      getCurrentUserId: () => null,
+      upsertExpenseReportFromServer: async report => saved.push(report.id),
+    } },
     '../hooks/useExpenseRefresh': { triggerExpenseRefresh() {} },
   }).serverPullSyncService;
   await service.pullReports();
   assert.deepEqual(saved, ['report-1', 'report-2', 'report-3']);
+});
+
+test('empty aliases of the same server report disappear without touching expenses or queuing deletion', async t => {
+  const { db, from, id } = await fixture(t);
+  const alias = await db.createExpenseReport({ title: 'A', server_id: 'server-a', sync_status: 'synced', is_archived: false });
+  await db.getExpenseReports();
+  assert.equal(await db.getExpenseReportById(alias), null);
+  assert.equal((await db.getExpenseReportById(from)).server_id, 'server-a');
+  const expense = await db.getExpenseById(id);
+  assert.equal(expense.expense_report_id, from);
+  assert.equal(expense.receipt_image_path, 'receipt.jpg');
+  assert(!(await db.getSyncQueue()).some(item => item.record_id === alias || item.action === 'delete'));
+});
+
+test('an empty default alias lends its server ID to the populated offline default', async t => {
+  const { db, sqlite, from, id } = await fixture(t);
+  sqlite.prepare("UPDATE expense_reports SET title = 'Nota Spesa Generica', server_id = NULL, sync_status = 'pending' WHERE id = ?").run(from);
+  const alias = await db.createExpenseReport({ title: 'Nota Spesa Generica', server_id: 'server-default', sync_status: 'synced', is_archived: false });
+  assert.equal(await db.getDefaultReportId(), from);
+  assert.equal(await db.getExpenseReportById(alias), null);
+  const row = await db.getExpenseReportById(from);
+  assert.equal(row.server_id, 'server-default');
+  assert.equal(row.sync_status, 'pending');
+  assert.equal((await db.getExpenseById(id)).expense_report_id, from);
+  assert((await db.getSyncQueue()).some(item => item.record_id === from));
+});
+
+test('simultaneous default lookups and imports create only one default', async t => {
+  const { db, sqlite } = await fixture(t);
+  const remote = { id: 'server-default', title: 'Nota Spesa Generica', user_id: 'user-1' };
+  const ids = await Promise.all([
+    db.getDefaultReportId(), db.upsertExpenseReportFromServer(remote),
+    db.getDefaultReportId(), db.upsertExpenseReportFromServer(remote), db.getDefaultReportId(),
+  ]);
+  assert.equal(new Set(ids).size, 1);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM expense_reports WHERE title = 'Nota Spesa Generica'").get().n, 1);
+});
+
+test('simultaneous imports of a custom report create only one row', async t => {
+  const { db } = await fixture(t);
+  const report = { id: 'server-custom', title: 'Trip', user_id: 'user-1' };
+  assert.equal(new Set(await Promise.all(Array.from({ length: 8 }, () => db.upsertExpenseReportFromServer(report)))).size, 1);
+});
+
+test('a synced report matched by local ID receives its server ID', async t => {
+  const { db, sqlite, from } = await fixture(t);
+  sqlite.prepare('UPDATE expense_reports SET server_id = NULL WHERE id = ?').run(from);
+  assert.equal(await db.upsertExpenseReportFromServer({ id: 'remote-a', local_id: from, title: 'A' }), from);
+  assert.equal((await db.getExpenseReportById(from)).server_id, 'remote-a');
+});
+
+test('matching names are not enough to merge custom reports or distinct server defaults', async t => {
+  const { db, sqlite, from } = await fixture(t);
+  const custom = await db.createExpenseReport({ title: 'A', server_id: 'another-server', sync_status: 'synced', is_archived: false });
+  await db.reconcileEmptyReportDuplicates();
+  assert(await db.getExpenseReportById(custom));
+  sqlite.prepare("UPDATE expense_reports SET title = 'Nota Spesa Generica' WHERE id IN (?, ?)").run(from, custom);
+  await db.reconcileEmptyReportDuplicates();
+  assert(await db.getExpenseReportById(from));
+  assert(await db.getExpenseReportById(custom));
+});
+
+test('archived expenses, pending report edits and other accounts are preserved', async t => {
+  const { db, sqlite, id } = await fixture(t);
+  const archived = await db.createExpenseReport({ title: 'A', server_id: 'server-a', sync_status: 'synced', is_archived: false });
+  await db.createExpense({ expense_report_id: archived, amount: 1, currency: 'EUR', receipt_date: '2026-09-01', is_archived: true, sync_status: 'synced' });
+  const edited = await db.createExpenseReport({ title: 'A', server_id: 'server-a', sync_status: 'synced', is_archived: false });
+  await db.updateExpenseReport(edited, { description: 'Unsynced change' });
+  const other = await db.createExpenseReport({ title: 'A', user_id: 'other-user', server_id: 'server-a', sync_status: 'synced', is_archived: false });
+  await db.reconcileEmptyReportDuplicates();
+  for (const reportId of [archived, edited, other]) assert(await db.getExpenseReportById(reportId));
+  assert(await db.getExpenseById(id));
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM expenses').get().n, 2);
+});
+
+test('duplicate repair rolls back if deleting its queue fails', async t => {
+  const { db, adapter, from } = await fixture(t);
+  const alias = await db.createExpenseReport({ title: 'A', server_id: 'server-a', sync_status: 'synced', is_archived: false });
+  const run = adapter.runAsync;
+  adapter.runAsync = async (sql, ...args) => {
+    if (sql.includes('DELETE FROM sync_queue')) throw new Error('disk error');
+    return run(sql, ...args);
+  };
+  await assert.rejects(db.reconcileEmptyReportDuplicates(), /disk error/);
+  assert(await db.getExpenseReportById(alias));
+  assert(await db.getExpenseReportById(from));
+  adapter.runAsync = run;
+  await db.reconcileEmptyReportDuplicates();
+  assert.equal(await db.getExpenseReportById(alias), null);
+});
+
+test('server import selects the populated alias, even when local_id points to the empty alias', async t => {
+  const { db, from } = await fixture(t);
+  const alias = await db.createExpenseReport({ title: 'A', server_id: 'server-a', sync_status: 'synced', is_archived: false });
+  assert.equal(await db.upsertExpenseReportFromServer({ id: 'server-a', local_id: alias, title: 'A' }), from);
+});
+
+function pullService(db, get) {
+  return load('services/serverPullSyncService.ts', {
+    './api': { apiClient: { get } }, './database': { databaseManager: db },
+    '../hooks/useExpenseRefresh': { triggerExpenseRefresh() {} },
+  }).serverPullSyncService;
+}
+
+async function staleReport(db, sqlite) {
+  const id = await db.createExpenseReport({ title: 'Nota Spesa Generica', server_id: 'deleted-default', sync_status: 'synced', is_archived: false });
+  sqlite.prepare("DELETE FROM sync_queue WHERE record_id = ?").run(id);
+  return id;
+}
+
+test('a stale empty synced report is removed only after its individual endpoint returns 404', async t => {
+  const { db, sqlite, from } = await fixture(t);
+  const stale = await staleReport(db, sqlite);
+  const requests = [];
+  await pullService(db, async url => {
+    requests.push(url);
+    if (url === '/expense-reports') return { success: true, data: [{ id: 'server-a', title: 'A', user_id: 'user-1' }] };
+    throw { response: { status: 404 } };
+  }).pullReports();
+  assert.deepEqual(requests, ['/expense-reports', '/expense-reports/deleted-default']);
+  assert.equal(await db.getExpenseReportById(stale), null);
+  assert(await db.getExpenseReportById(from));
+});
+
+test('network failures, auth errors and server errors never delete an absent report', async t => {
+  const { db, sqlite } = await fixture(t);
+  const stale = await staleReport(db, sqlite);
+  for (const status of [undefined, 401, 403, 500]) {
+    await pullService(db, async url => {
+      if (url === '/expense-reports') return { success: true, data: [] };
+      throw { response: { status } };
+    }).pullReports();
+    assert(await db.getExpenseReportById(stale));
+  }
+});
+
+test('a failed list never starts stale-report cleanup', async t => {
+  const { db, sqlite } = await fixture(t);
+  const stale = await staleReport(db, sqlite);
+  await assert.rejects(pullService(db, async () => ({ success: false, error: 'Unavailable' })).pullReports(), /Unavailable/);
+  assert(await db.getExpenseReportById(stale));
+});
+
+test('a report excluded from the list but still on the server is preserved and updated', async t => {
+  const { db, sqlite } = await fixture(t);
+  const stale = await staleReport(db, sqlite);
+  await pullService(db, async url => url === '/expense-reports'
+    ? { success: true, data: [] }
+    : { success: true, data: { id: 'deleted-default', title: 'Old report', is_archived: true, user_id: 'user-1' } }
+  ).pullReports();
+  assert.equal((await db.getExpenseReportById(stale)).title, 'Old report');
+  assert.equal((await db.getExpenseReportById(stale)).is_archived, true);
+});
+
+test('404 cleanup rechecks expenses, queued edits and account changes after the request', async t => {
+  const { db, sqlite } = await fixture(t);
+  for (const mutation of ['expense', 'edit', 'account']) {
+    db.setCurrentUserId('user-1');
+    const stale = await staleReport(db, sqlite);
+    let changed = false;
+    await pullService(db, async url => {
+      if (url === '/expense-reports') return { success: true, data: [] };
+      if (mutation === 'expense') await db.createExpense({ expense_report_id: stale, amount: 1, currency: 'EUR', receipt_date: '2026-09-01', is_archived: true, sync_status: 'pending' });
+      if (mutation === 'edit') await db.updateExpenseReport(stale, { description: 'Offline edit' });
+      if (mutation === 'account') db.setCurrentUserId('other-user');
+      changed = true;
+      throw { response: { status: 404 } };
+    }).pullReports();
+    assert(changed);
+    assert(await db.getExpenseReportById(stale));
+  }
 });
