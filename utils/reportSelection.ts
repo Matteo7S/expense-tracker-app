@@ -3,6 +3,7 @@ type DateValue = string | Date | null | undefined;
 export interface ReportOption {
   id: string;
   name: string;
+  isDefault?: boolean;
   startDate?: DateValue;
   endDate?: DateValue;
   updatedAt?: DateValue;
@@ -32,7 +33,7 @@ export function filterReportOptions<T extends ReportOption>(reports: T[], search
     // With a period filter, undated reports cannot be matched reliably.
     return !!start && (!from || end >= from) && (!to || start <= to);
   }).sort((a, b) =>
-    (timestamp(b.updatedAt) || timestamp(b.createdAt)) - (timestamp(a.updatedAt) || timestamp(a.createdAt)) ||
+    Number(!!b.isDefault) - Number(!!a.isDefault) ||
+    (timestamp(b.createdAt) || timestamp(b.updatedAt)) - (timestamp(a.createdAt) || timestamp(a.updatedAt)) ||
     a.id.localeCompare(b.id));
 }
-

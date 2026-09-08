@@ -68,6 +68,9 @@ function buildExpenseFingerprint(expense) {
 console.log('Running Play Console preflight checks...');
 check('Multi-report offline and sync regression tests pass', () => {
   run(process.execPath, ['--test', 'scripts/reports.test.cjs']);
+  const list = read('components/ReportList.tsx');
+  requireText(list, 'isDefault: isGenericExpenseReportTitle(report.title)', 'Report list must identify the default for pinned ordering.');
+  requireText(list, 'createdAt: report.created_at', 'Report list must pass the creation date for newest-first ordering.');
 });
 
 check('Play build script requires preflight before EAS', () => {

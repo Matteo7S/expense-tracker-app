@@ -16,6 +16,58 @@ test('destination search sorts by recency, ignores accents and keeps the input u
   assert.equal(rows[0].id, 'old');
 });
 
+test('the default stays first after appending a new report and after a server reload', () => {
+  const { filterReportOptions } = load('utils/reportSelection.ts', {});
+  const rows = [
+    { id: 'old', name: 'Old', createdAt: '2026-04-01', updatedAt: '2026-09-08' },
+    { id: 'default', name: 'Nota Spesa', isDefault: true, createdAt: '2026-01-01' },
+    { id: 'recent', name: 'Recent', createdAt: '2026-08-01', updatedAt: '2026-08-01' },
+  ];
+  const ids = rows => filterReportOptions(rows, '', '', '').map(row => row.id);
+  assert.deepEqual(ids(rows), ['default', 'recent', 'old']);
+  const created = [...rows, { id: 'new', name: 'New', createdAt: '2026-09-08' }];
+  assert.deepEqual(ids(created), ['default', 'new', 'recent', 'old']);
+  assert.deepEqual(ids([...created].reverse()), ['default', 'new', 'recent', 'old']);
+  assert.deepEqual(created.map(row => row.id), ['old', 'default', 'recent', 'new']);
+});
+
+test('default pinning respects search and date filters and the absence of a default', () => {
+  const { filterReportOptions } = load('utils/reportSelection.ts', {});
+  const rows = [
+    { id: 'new', name: 'Trip new', createdAt: '2026-09-08', startDate: '2026-09-01', endDate: '2026-09-08' },
+    { id: 'default', name: 'Nota Spesa', isDefault: true, createdAt: '2026-01-01' },
+    { id: 'old', name: 'Trip old', createdAt: '2026-04-01', startDate: '2026-04-01', endDate: '2026-04-10' },
+  ];
+  assert.deepEqual(filterReportOptions(rows, 'Trip', '', '').map(row => row.id), ['new', 'old']);
+  assert.deepEqual(filterReportOptions(rows, '', '2026-09-01', '').map(row => row.id), ['new']);
+  assert.deepEqual(filterReportOptions(rows.filter(row => !row.isDefault), '', '', '').map(row => row.id), ['new', 'old']);
+});
+
+test('creation date takes priority over edits, with stable ordering for missing or equal dates', () => {
+  const { filterReportOptions } = load('utils/reportSelection.ts', {});
+  const rows = [
+    { id: 'missing', name: 'Missing', createdAt: 'invalid' },
+    { id: 'old', name: 'Old', createdAt: '2026-01-01', updatedAt: '2026-12-01' },
+    { id: 'b', name: 'B', createdAt: new Date('2026-09-01') },
+    { id: 'a', name: 'A', createdAt: '2026-09-01' },
+    { id: 'legacy', name: 'Legacy', updatedAt: '2026-08-01' },
+  ];
+  assert.deepEqual(filterReportOptions(rows, '', '', '').map(row => row.id), ['a', 'b', 'legacy', 'old', 'missing']);
+});
+
+test('default identification uses the internal title independently of the displayed label', () => {
+  const { isGenericExpenseReportTitle, getExpenseReportDisplayTitle } = load('utils/expenseReportDisplay.ts', {});
+  const { filterReportOptions } = load('utils/reportSelection.ts', {});
+  const reports = [
+    { id: 'new', title: 'Trip', createdAt: '2026-09-08' },
+    { id: 'default', title: '  NOTA SPESA GENERICA  ', createdAt: '2026-01-01' },
+  ];
+  const rows = reports.map(report => ({ ...report,
+    name: getExpenseReportDisplayTitle(report.title), isDefault: isGenericExpenseReportTitle(report.title) }));
+  assert.equal(rows[1].name, 'Nota Spesa');
+  assert.deepEqual(filterReportOptions(rows, '', '', '').map(row => row.id), ['default', 'new']);
+});
+
 test('destination period filtering uses inclusive overlap and excludes undated reports', () => {
   const { filterReportOptions } = load('utils/reportSelection.ts', {});
   const rows = [

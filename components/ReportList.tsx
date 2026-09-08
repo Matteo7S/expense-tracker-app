@@ -59,6 +59,7 @@ export function ReportList({ onSelect, excludeId, allowCreate = true, confirmSel
 
   const visible = filterReportOptions(reports.filter(report => report.id !== excludeId && !report.is_archived).map(report => ({
     id: report.id, name: getExpenseReportDisplayTitle(report.title), startDate: report.start_date,
+    isDefault: isGenericExpenseReportTitle(report.title),
     endDate: report.end_date, updatedAt: report.updated_at, createdAt: report.created_at, report,
   })), search, from, to);
   const selected = visible.find(item => item.id === selectedId);
