@@ -12,6 +12,7 @@
     "test:preplay": "node ./scripts/preplay-check.js",
     "test:reports": "node --test scripts/reports.test.cjs",
     "build:android:play": "PREPLAY_REQUIRE_CLEAN=1 npm run test:preplay && eas build --platform android --profile production --non-interactive",
+    "build:android:play:local": "PREPLAY_REQUIRE_CLEAN=1 npm run test:preplay && eas build --platform android --profile production --non-interactive --local --freeze-credentials --output ./release-artifacts/wel-fy-local.aab",
     "eas-build-post-install": "npm run test:preplay"
   },
   "dependencies": {

@@ -94,6 +94,10 @@ check('Play build script requires preflight before EAS', () => {
   requireText(script, 'PREPLAY_REQUIRE_CLEAN=1', 'Play build must require a clean git tree.');
   requireText(script, 'npm run test:preplay', 'Play build must run preplay checks first.');
   requireText(script, 'eas build --platform android --profile production --non-interactive', 'Play build must use the production Android EAS profile.');
+  const local = pkg.scripts['build:android:play:local'];
+  requireText(local, 'PREPLAY_REQUIRE_CLEAN=1 npm run test:preplay && eas build', 'Local Play builds must run the same checks on a clean tree.');
+  requireText(local, '--profile production', 'Local builds must use the same production configuration.');
+  requireText(local, '--local --freeze-credentials', 'Local builds must reuse existing signing credentials without changing them.');
   assert.strictEqual(easHook, 'npm run test:preplay', 'EAS remote builds must also run the preplay checks.');
 });
 
@@ -118,6 +122,7 @@ check('Production EAS config creates an Android App Bundle', () => {
   assert(production, 'Missing production EAS profile.');
   assert.strictEqual(eas.cli && eas.cli.appVersionSource, 'remote', 'EAS must use remote app version source.');
   assert.strictEqual(production.autoIncrement, true, 'Production build must auto-increment the versionCode.');
+  assert.strictEqual(production.credentialsSource, 'remote', 'Production builds must reuse the EAS-managed keystore.');
   assert.strictEqual(production.android && production.android.buildType, 'app-bundle', 'Production Android build must create an AAB.');
 });
 

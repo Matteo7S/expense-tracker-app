@@ -18,6 +18,7 @@
       }
     },
     "production": {
+      "credentialsSource": "remote",
       "node": "22.18.0",
       "autoIncrement": true,
       "ios": {
