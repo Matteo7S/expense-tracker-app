@@ -73,6 +73,18 @@ check('Multi-report offline and sync regression tests pass', () => {
   requireText(list, 'createdAt: report.created_at', 'Report list must pass the creation date for newest-first ordering.');
 });
 
+check('Searchable currency picker is shared by create and edit flows', () => {
+  for (const file of ['components/DataVerificationModal.tsx', 'screens/main/ExpenseEditScreen.tsx']) {
+    const source = read(file);
+    requireText(source, '<CurrencyPicker value={currency}', `${file} must use the shared currency picker.`);
+    assert(!source.includes('const currencies = ['), `${file} must not restrict currency choices.`);
+  }
+  const picker = read('components/CurrencyPicker.tsx');
+  requireText(picker, 'searchCurrencies', 'Currency picker must support search.');
+  requireText(picker, 'keyboardShouldPersistTaps="handled"', 'Currency results must remain selectable with the keyboard open.');
+  requireText(picker, 'insets.bottom', 'Currency picker must respect Android navigation insets.');
+});
+
 check('Play build script requires preflight before EAS', () => {
   const pkg = readJson('package.json');
   const script = pkg.scripts && pkg.scripts['build:android:play'];
@@ -136,6 +148,8 @@ check('Targeted lint passes for release-critical files', () => {
   const files = [
     'components/FilterDatePicker.tsx',
     'components/ReportList.tsx',
+    'components/CurrencyPicker.tsx',
+    'utils/currencies.ts',
     'utils/reportSelection.ts',
     'screens/main/ExpenseReportsScreen.tsx',
     'screens/main/GenericScanScreen.tsx',

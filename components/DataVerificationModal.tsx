@@ -14,11 +14,13 @@ import {
   ScrollView,
   Platform,
   KeyboardAvoidingView,
+  Keyboard,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../i18n';
+import { CurrencyPicker } from './CurrencyPicker';
 
 export interface ExtractedData {
   amount?: number;
@@ -84,6 +86,10 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
 
+  useEffect(() => {
+    if (!visible) setShowCurrencyPicker(false);
+  }, [visible]);
+
   // Fuel specific state
   const [kilometers, setKilometers] = useState<string>('');
   const [fuelLiters, setFuelLiters] = useState<string>('');
@@ -101,13 +107,6 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
     { value: 'fuel', labelKey: 'categories.fuel', icon: 'local-gas-station' },
     { value: 'business', labelKey: 'categories.business', icon: 'business' },
     { value: 'other', labelKey: 'categories.other', icon: 'more-horiz' },
-  ];
-
-  const currencies = [
-    { value: 'EUR', label: '€ EUR' },
-    { value: 'USD', label: '$ USD' },
-    { value: 'GBP', label: '£ GBP' },
-    { value: 'CHF', label: 'CHF' },
   ];
 
   const fuelTypes = [
@@ -300,7 +299,10 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
-      onRequestClose={onClose}
+      onRequestClose={() => {
+        if (showCurrencyPicker) { Keyboard.dismiss(); setShowCurrencyPicker(false); }
+        else onClose();
+      }}
     >
       <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         <KeyboardAvoidingView
@@ -363,7 +365,8 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
                 keyboardType="decimal-pad"
                 editable={!isLoading}
               />
-              <TouchableOpacity onPress={() => !isLoading && setShowCurrencyPicker(true)}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel={t('expenseForm.selectCurrency')}
+                onPress={() => { if (!isLoading) { Keyboard.dismiss(); setShowCurrencyPicker(true); } }}>
                 <Text style={styles.currencyText}>{currency}</Text>
               </TouchableOpacity>
             </View>
@@ -677,42 +680,8 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
         {/* Currency Picker */}
         {showCurrencyPicker && (
           <View style={styles.pickerOverlay}>
-            <View style={[styles.pickerContainer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-              <View style={styles.pickerHeader}>
-                <TouchableOpacity onPress={() => setShowCurrencyPicker(false)}>
-                  <Text style={styles.pickerCancelText}>{t('common.cancel')}</Text>
-                </TouchableOpacity>
-                <Text style={styles.pickerTitle}>{t('expenseForm.selectCurrency')}</Text>
-                <TouchableOpacity onPress={() => setShowCurrencyPicker(false)}>
-                  <Text style={styles.pickerConfirmText}>{t('common.confirm')}</Text>
-                </TouchableOpacity>
-              </View>
-              <ScrollView style={styles.categoryPickerList}>
-                {currencies.map((curr) => (
-                  <TouchableOpacity
-                    key={curr.value}
-                    style={[
-                      styles.categoryPickerItem,
-                      currency === curr.value && styles.categoryPickerItemSelected,
-                    ]}
-                    onPress={() => {
-                      setCurrency(curr.value);
-                      setShowCurrencyPicker(false);
-                    }}
-                  >
-                    <Text style={[
-                      styles.categoryPickerItemText,
-                      currency === curr.value && styles.categoryPickerItemTextSelected,
-                    ]}>
-                      {curr.label}
-                    </Text>
-                    {currency === curr.value && (
-                      <MaterialIcons name="check" size={24} color="#007AFF" />
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
+            <CurrencyPicker value={currency} onClose={() => setShowCurrencyPicker(false)}
+              onSelect={code => { setCurrency(code); setShowCurrencyPicker(false); }} />
           </View>
         )}
 

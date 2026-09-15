@@ -14,6 +14,8 @@ import {
   ActivityIndicator,
   Platform,
   Modal,
+  KeyboardAvoidingView,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -25,6 +27,7 @@ import { syncManager } from '../../services/syncManager';
 import { MainStackParamList } from '../../navigation/MainNavigator';
 import { triggerExpenseRefresh } from '../../hooks/useExpenseRefresh';
 import { useI18n } from '../../i18n';
+import { CurrencyPicker } from '../../components/CurrencyPicker';
 
 type ExpenseEditScreenNavigationProp = StackNavigationProp<MainStackParamList, 'EditExpense'>;
 type ExpenseEditScreenRouteProp = RouteProp<MainStackParamList, 'EditExpense'>;
@@ -88,13 +91,6 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
     { value: 'business', labelKey: 'categories.business', icon: 'business' },
     { value: 'fuel', labelKey: 'categories.fuel', icon: 'local-gas-station' },
     { value: 'other', labelKey: 'categories.other', icon: 'more-horiz' },
-  ];
-
-  const currencies = [
-    { value: 'EUR', label: '€ EUR' },
-    { value: 'USD', label: '$ USD' },
-    { value: 'GBP', label: '£ GBP' },
-    { value: 'CHF', label: 'CHF' },
   ];
 
   useEffect(() => {
@@ -302,7 +298,8 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
                 keyboardType="numeric"
                 placeholderTextColor="#999"
               />
-              <TouchableOpacity onPress={() => setShowCurrencyPicker(true)}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel={t('expenseForm.selectCurrency')}
+                onPress={() => { Keyboard.dismiss(); setShowCurrencyPicker(true); }}>
                 <Text style={styles.currencyLabel}>{currency}</Text>
               </TouchableOpacity>
             </View>
@@ -558,42 +555,12 @@ export const ExpenseEditScreen: React.FC<ExpenseEditScreenProps> = ({
           transparent={true}
           animationType="slide"
           visible={showCurrencyPicker}
+          onRequestClose={() => setShowCurrencyPicker(false)}
         >
-          <View style={styles.modalOverlay}>
-            <View style={styles.categoryPickerContainer}>
-              <View style={styles.datePickerHeader}>
-                <Text style={styles.datePickerTitle}>{t('expenseForm.selectCurrency')}</Text>
-                <TouchableOpacity onPress={() => setShowCurrencyPicker(false)}>
-                  <MaterialIcons name="close" size={24} color="#666" />
-                </TouchableOpacity>
-              </View>
-              <ScrollView style={styles.categoryList}>
-                {currencies.map((curr) => (
-                  <TouchableOpacity
-                    key={curr.value}
-                    style={[
-                      styles.categoryItem,
-                      currency === curr.value && styles.categoryItemSelected
-                    ]}
-                    onPress={() => {
-                      setCurrency(curr.value);
-                      setShowCurrencyPicker(false);
-                    }}
-                  >
-                    <Text style={[
-                      styles.categoryItemText,
-                      currency === curr.value && styles.categoryItemTextSelected
-                    ]}>
-                      {curr.label}
-                    </Text>
-                    {currency === curr.value && (
-                      <MaterialIcons name="check" size={24} color="#007AFF" />
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          </View>
+          <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+            <CurrencyPicker value={currency} onClose={() => setShowCurrencyPicker(false)}
+              onSelect={code => { setCurrency(code); setShowCurrencyPicker(false); }} />
+          </KeyboardAvoidingView>
         </Modal>
       )}
 

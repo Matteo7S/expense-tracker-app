@@ -103,6 +103,64 @@ function load(relative, mocks) {
   return module.exports;
 }
 
+function currencies() {
+  return load('utils/currencies.ts', { './currencies.json': require('../utils/currencies.json') });
+}
+
+test('offline ISO currency catalogue has unique codes and names in every app language', () => {
+  const { getCurrencyOptions } = currencies();
+  for (const locale of ['it-IT', 'en-GB', 'de-DE']) {
+    const rows = getCurrencyOptions(locale);
+    assert.equal(rows.length, 176);
+    assert.equal(new Set(rows.map(row => row.code)).size, rows.length);
+    assert(rows.every(row => /^[A-Z]{3}$/.test(row.code) && row.name && row.symbol));
+    for (const code of ['EUR', 'USD', 'GBP', 'CHF', 'SEK', 'NOK', 'DKK', 'JPY', 'CNY', 'INR', 'KWD', 'XCG', 'ZWG']) {
+      assert(rows.some(row => row.code === code), code);
+    }
+    assert(!rows.some(row => ['XXX', 'XTS'].includes(row.code)));
+  }
+});
+
+test('currency search accepts codes, multilingual names, accents and several words', () => {
+  const { getCurrencyOptions, searchCurrencies } = currencies();
+  const options = getCurrencyOptions('it-IT');
+  const codes = query => searchCurrencies(options, query).map(row => row.code);
+  assert.deepEqual(codes('  sEk '), ['SEK']);
+  assert(codes('corona svedese').includes('SEK'));
+  assert(codes('swedish krona').includes('SEK'));
+  assert(codes('schwedische krone').includes('SEK'));
+  assert(codes('dóllar').includes('USD'));
+  assert(codes('$').includes('USD'));
+  assert.equal(codes('not-a-currency').length, 0);
+  assert.equal(codes('   ').length, options.length);
+  assert.equal(options.length, 176);
+});
+
+test('saved historical currency codes stay selectable without allowing invalid codes', () => {
+  const { getCurrencyOptions, searchCurrencies } = currencies();
+  const options = getCurrencyOptions('it-IT', 'bgn');
+  assert.equal(options.length, 177);
+  assert.equal(searchCurrencies(options, 'bgn')[0].code, 'BGN');
+  assert.equal(getCurrencyOptions('it-IT', 'eur').length, 176);
+  assert.equal(getCurrencyOptions('it-IT', 'BAD_CODE').length, 176);
+  assert(getCurrencyOptions('fr-FR').every(row => row.name));
+});
+
+test('all selectable currency codes survive local save, queueing and server pull', async t => {
+  const { db, from } = await fixture(t);
+  for (const { code } of currencies().getCurrencyOptions('it-IT')) {
+    const id = await db.createExpense({ expense_report_id: from, amount: 12, currency: code,
+      receipt_date: '2026-09-15', merchant_name: code, is_archived: false, sync_status: 'pending' });
+    const local = await db.getExpenseById(id);
+    assert.equal(local.currency, code);
+    const queue = (await db.getSyncQueue()).find(item => item.record_id === id);
+    assert.equal(JSON.parse(queue.data).currency, code);
+    await db.acknowledgeSync('expenses', id, local.updated_at, `remote-${code}`);
+    await db.upsertExpenseFromServer({ id: `remote-${code}`, amount: 12, currency: code, receipt_date: '2026-09-15' }, from);
+    assert.equal((await db.getExpenseById(id)).currency, code);
+  }
+});
+
 async function fixture(t) {
   const sqlite = new DatabaseSync(':memory:');
   t.after(() => sqlite.close());
