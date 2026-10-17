@@ -5,6 +5,56 @@ const fs = require('node:fs');
 const path = require('node:path');
 const ts = require('typescript');
 
+test('online receipt analysis skips network when offline or cancelled', async () => {
+  let calls = 0;
+  const { analyzeReceiptOnline } = load('services/onlineReceiptAnalysis.ts', {
+    './api': { apiClient: { uploadFile: async () => { calls++; } } },
+    './networkManager': { networkManager: { isOnline: () => false } },
+  });
+  assert.equal(await analyzeReceiptOnline('receipt.jpg', new AbortController().signal), null);
+  assert.equal(calls, 0);
+});
+
+test('online receipt analysis uses authenticated upload, a timeout and cancellation; failures fall back', async () => {
+  let response = { success: true, data: { provider: 'azure', fields: { amount: 12, currency: 'GBP' }, confidence: 0.9 } };
+  let fail = false;
+  let lastOptions;
+  const { analyzeReceiptOnline } = load('services/onlineReceiptAnalysis.ts', {
+    './api': { apiClient: { uploadFile: async (url, _form, _headers, options) => {
+      assert.equal(url, '/expenses/analyze-receipt');
+      lastOptions = options;
+      if (fail) throw new Error('unavailable');
+      return response;
+    } } },
+    './networkManager': { networkManager: { isOnline: () => true } },
+  });
+  const controller = new AbortController();
+  assert.equal((await analyzeReceiptOnline('receipt.jpg', controller.signal)).fields.currency, 'GBP');
+  assert.equal(lastOptions.timeout, 45000);
+  assert.equal(lastOptions.signal, controller.signal);
+  fail = true;
+  assert.equal(await analyzeReceiptOnline('receipt.jpg', controller.signal), null);
+  fail = false; response = { success: false };
+  assert.equal(await analyzeReceiptOnline('receipt.jpg', controller.signal), null);
+  controller.abort();
+  assert.equal(await analyzeReceiptOnline('receipt.jpg', controller.signal), null);
+});
+
+test('Azure fields override heuristics, preserve zero and leave location and missing fields alone', () => {
+  const { mergeReceiptAnalysis } = load('utils/mergeReceiptAnalysis.ts', {});
+  const local = { amount: 100, currency: 'EUR', merchantName: 'Local', date: '2026-04-22', merchantLocation: 'Mantova', confidence: { amount: 0.9, merchant: 0.5 } };
+  const merged = mergeReceiptAnalysis(local, { amount: 0, currency: 'GBP', merchantName: '', confidence: { amount: 0.7 } });
+  assert.equal(merged.amount, 0);
+  assert.equal(merged.currency, 'GBP');
+  assert.equal(merged.merchantName, 'Local');
+  assert.equal(merged.date, local.date);
+  assert.equal(merged.merchantLocation, 'Mantova');
+  assert.equal(merged.confidence.amount, 0.7);
+  assert.equal(local.amount, 100);
+  assert.equal(local.confidence.amount, 0.9);
+  assert.equal(mergeReceiptAnalysis(local, { amount: 25 }).confidence.amount, undefined);
+});
+
 test('destination search sorts by recency, ignores accents and keeps the input unchanged', () => {
   const { filterReportOptions } = load('utils/reportSelection.ts', {});
   const rows = [

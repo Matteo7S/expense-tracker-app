@@ -155,6 +155,8 @@ check('Targeted lint passes for release-critical files', () => {
     'components/ReportList.tsx',
     'components/CurrencyPicker.tsx',
     'utils/currencies.ts',
+    'utils/mergeReceiptAnalysis.ts',
+    'services/onlineReceiptAnalysis.ts',
     'utils/reportSelection.ts',
     'screens/main/ExpenseReportsScreen.tsx',
     'screens/main/GenericScanScreen.tsx',

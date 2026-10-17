@@ -196,12 +196,14 @@ class ApiClient {
   }
 
   // Upload file with progress
-  async uploadFile<T>(endpoint: string, formData: FormData, onProgress?: (progress: number) => void): Promise<T> {
+  async uploadFile<T>(endpoint: string, formData: FormData, onProgress?: (progress: number) => void,
+    options?: { signal?: AbortSignal; timeout?: number }): Promise<T> {
     const response = await this.client.post(endpoint, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
       timeout: 60000, // Increase timeout to 60 seconds for file uploads
+      ...options,
       onUploadProgress: (progressEvent) => {
         if (onProgress && progressEvent.total) {
           const progress = (progressEvent.loaded / progressEvent.total) * 100;

@@ -29,6 +29,8 @@ import { syncManager } from '../../services/syncManager';
 import { triggerExpenseRefresh } from '../../hooks/useExpenseRefresh';
 import { toRelativeReceiptPath } from '../../utils/receiptPath';
 import { useI18n } from '../../i18n';
+import { analyzeReceiptOnline, OnlineReceiptAnalysis } from '../../services/onlineReceiptAnalysis';
+import { mergeReceiptAnalysis } from '../../utils/mergeReceiptAnalysis';
 
 type GenericLiveOCRScreenNavigationProp = StackNavigationProp<MainStackParamList, 'GenericLiveOCRCamera'>;
 
@@ -68,6 +70,8 @@ export function GenericLiveOCRScreen() {
 
   // OCR states
   const [ocrAnalysis, setOcrAnalysis] = useState<OCRAnalysis | null>(null);
+  const [onlineAnalysis, setOnlineAnalysis] = useState<OnlineReceiptAnalysis | null>(null);
+  const analysisController = useRef<AbortController | null>(null);
   const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
   const [ocrInitialized, setOcrInitialized] = useState(false);
   const [isInitializingOCR, setIsInitializingOCR] = useState(true);
@@ -86,6 +90,7 @@ export function GenericLiveOCRScreen() {
     initializeVisionOCR();
 
     return () => {
+      analysisController.current?.abort();
       StatusBar.setHidden(false);
     };
   }, []);
@@ -126,6 +131,8 @@ export function GenericLiveOCRScreen() {
   };
 
   const resetReceiptFlowState = () => {
+    analysisController.current?.abort();
+    setOnlineAnalysis(null);
     setCapturedImage(null);
     setShowPreview(false);
     setShowAnalysis(false);
@@ -167,6 +174,10 @@ export function GenericLiveOCRScreen() {
   };
 
   const analyzeImage = async (imageUri: string) => {
+    analysisController.current?.abort();
+    const controller = new AbortController();
+    analysisController.current = controller;
+    setOnlineAnalysis(null);
     setShowAnalysis(true);
     setAnalysisProgress({ progress: 0, stage: 'Inizializzazione...' });
 
@@ -178,6 +189,18 @@ export function GenericLiveOCRScreen() {
     }).start();
 
     try {
+      setAnalysisProgress({ progress: 20, stage: t('scanner.onlineAnalysis') });
+      const online = await analyzeReceiptOnline(imageUri, controller.signal);
+      if (controller.signal.aborted) return;
+      if (online) {
+        setOnlineAnalysis(online);
+        const accuracy = online.confidence * 100;
+        setOcrAnalysis({ text: online.text, confidence: online.confidence, accuracy,
+          timestamp: Date.now(), status: accuracy >= ACCURACY_THRESHOLD ? 'success' : 'low_quality' });
+        setAnalysisProgress({ progress: 100, stage: t('scanner.onlineAnalysisComplete') });
+        progressAnimation.setValue(100);
+        return;
+      }
       if (ocrInitialized) {
         // Use Vision OCR (local, fast)
         setAnalysisProgress({ progress: 20, stage: 'Vision OCR - Analisi locale...' });
@@ -189,6 +212,7 @@ export function GenericLiveOCRScreen() {
         }).start();
 
         const result = await visionOCRService.extractTextFromImage(imageUri);
+        if (controller.signal.aborted) return;
 
         setAnalysisProgress({ progress: 80, stage: 'Calcolo precisione...' });
 
@@ -229,6 +253,7 @@ export function GenericLiveOCRScreen() {
       }
 
     } catch (error) {
+      if (controller.signal.aborted) return;
       console.error('❌ AI Analysis error:', error);
       setOcrAnalysis({
         text: '',
@@ -261,10 +286,7 @@ export function GenericLiveOCRScreen() {
         setCapturedImage(photo.uri);
         setShowPreview(true);
 
-        // Start OCR analysis if available
-        if (ocrInitialized) {
-          await analyzeImage(photo.uri);
-        }
+        await analyzeImage(photo.uri);
       }
     } catch (error) {
       console.error('Error taking picture:', error);
@@ -366,6 +388,13 @@ export function GenericLiveOCRScreen() {
       console.log('📋 Continuing with manual data entry due to analysis error');
     }
 
+    if (onlineAnalysis) {
+      verificationData = mergeReceiptAnalysis(verificationData, onlineAnalysis.fields);
+      if (onlineAnalysis.fields.merchantAddress) {
+        setOcrSilentFields(current => ({ ...current, merchantAddress: onlineAnalysis.fields.merchantAddress }));
+      }
+    }
+
     try {
       await applyPreviousLocationSuggestion();
     } catch (error) {
@@ -419,6 +448,7 @@ export function GenericLiveOCRScreen() {
       const extractedDataForSaving = {
         originalText: ocrAnalysis?.text || '',
         overallAccuracy: ocrAnalysis?.accuracy || 0,
+        provider: onlineAnalysis ? 'azure' : 'local',
         merchantLocation: confirmedData.merchantLocation,
         merchantLocationSource: confirmedData.merchantLocationSource,
         // Includi altri dati dall'analisi smart se disponibili
@@ -493,6 +523,7 @@ export function GenericLiveOCRScreen() {
   };
 
   const goBack = () => {
+    analysisController.current?.abort();
     navigation.goBack();
   };
 
@@ -512,10 +543,7 @@ export function GenericLiveOCRScreen() {
         setCapturedImage(result.assets[0].uri);
         setShowPreview(true);
 
-        // Start OCR analysis if available
-        if (ocrInitialized) {
-          await analyzeImage(result.assets[0].uri);
-        }
+        await analyzeImage(result.assets[0].uri);
       }
     } catch (error) {
       console.error('Error picking image:', error);
@@ -636,6 +664,11 @@ export function GenericLiveOCRScreen() {
           <Text style={styles.progressText}>
             {Math.round(analysisProgress.progress)}%
           </Text>
+          {analysisProgress.progress < 100 && (
+            <TouchableOpacity onPress={resetReceiptFlowState} accessibilityRole="button">
+              <Text style={styles.retryButtonText}>{t('common.cancel')}</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Analysis Results */}

@@ -197,6 +197,8 @@ export const translations = {
       localImage: 'Immagine locale',
     },
     scanner: {
+      onlineAnalysis: 'Analisi online con Azure, se disponibile...',
+      onlineAnalysisComplete: 'Analisi Azure completata: verifica i dati',
       opening: 'Apertura scanner...',
       uploadReceipt: 'Carica Scontrino',
       uploadReceiptOcr: 'Carica Scontrino con OCR',
@@ -550,6 +552,8 @@ export const translations = {
       localImage: 'Local image',
     },
     scanner: {
+      onlineAnalysis: 'Online analysis with Azure, when available...',
+      onlineAnalysisComplete: 'Azure analysis complete: check the details',
       opening: 'Opening scanner...',
       uploadReceipt: 'Upload Receipt',
       uploadReceiptOcr: 'Upload Receipt with OCR',
@@ -903,6 +907,8 @@ export const translations = {
       localImage: 'Lokales Bild',
     },
     scanner: {
+      onlineAnalysis: 'Online-Analyse mit Azure, falls verfügbar...',
+      onlineAnalysisComplete: 'Azure-Analyse abgeschlossen: Daten prüfen',
       opening: 'Scanner wird geöffnet...',
       uploadReceipt: 'Beleg hochladen',
       uploadReceiptOcr: 'Beleg mit OCR hochladen',
