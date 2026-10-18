@@ -31,6 +31,7 @@ import { toRelativeReceiptPath } from '../../utils/receiptPath';
 import { useI18n } from '../../i18n';
 import { analyzeReceiptOnline, OnlineReceiptAnalysis } from '../../services/onlineReceiptAnalysis';
 import { mergeReceiptAnalysis } from '../../utils/mergeReceiptAnalysis';
+import { useAuth } from '../../contexts/AuthContext';
 
 type GenericLiveOCRScreenNavigationProp = StackNavigationProp<MainStackParamList, 'GenericLiveOCRCamera'>;
 
@@ -38,8 +39,8 @@ const { width, height } = Dimensions.get('window');
 
 interface OCRAnalysis {
   text: string;
-  confidence: number;
-  accuracy: number;
+  confidence?: number;
+  accuracy?: number;
   timestamp: number;
   status: 'analyzing' | 'success' | 'failed' | 'low_quality';
 }
@@ -56,6 +57,7 @@ export function GenericLiveOCRScreen() {
   const route = useRoute<RouteProp<MainStackParamList, 'GenericLiveOCRCamera'>>();
   const navigation = useNavigation<GenericLiveOCRScreenNavigationProp>();
   const { formatCurrency, t } = useI18n();
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
 
   // Camera states
@@ -95,6 +97,8 @@ export function GenericLiveOCRScreen() {
     };
   }, []);
 
+  useEffect(() => () => { analysisController.current?.abort(); }, [user?.id]);
+
   // Handle Android hardware back button
   useFocusEffect(
     React.useCallback(() => {
@@ -103,10 +107,12 @@ export function GenericLiveOCRScreen() {
         return true; // Prevent default behavior
       };
 
-      if (Platform.OS === 'android') {
-        const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
-        return () => subscription?.remove();
-      }
+      const subscription = Platform.OS === 'android'
+        ? BackHandler.addEventListener('hardwareBackPress', onBackPress) : undefined;
+      return () => {
+        subscription?.remove();
+        analysisController.current?.abort();
+      };
     }, [])
   );
 
@@ -189,21 +195,21 @@ export function GenericLiveOCRScreen() {
     }).start();
 
     try {
-      setAnalysisProgress({ progress: 20, stage: t('scanner.onlineAnalysis') });
-      const online = await analyzeReceiptOnline(imageUri, controller.signal);
+      setAnalysisProgress({ progress: 20, stage: t('scanner.localAnalysis') });
+      const online = await analyzeReceiptOnline(imageUri, controller.signal, user?.id, () => {
+        setAnalysisProgress({ progress: 20, stage: t('scanner.onlineAnalysis') });
+      });
       if (controller.signal.aborted) return;
       if (online) {
         setOnlineAnalysis(online);
-        const accuracy = online.confidence * 100;
-        setOcrAnalysis({ text: online.text, confidence: online.confidence, accuracy,
-          timestamp: Date.now(), status: accuracy >= ACCURACY_THRESHOLD ? 'success' : 'low_quality' });
+        setOcrAnalysis({ text: online.text, timestamp: Date.now(), status: 'success' });
         setAnalysisProgress({ progress: 100, stage: t('scanner.onlineAnalysisComplete') });
         progressAnimation.setValue(100);
         return;
       }
       if (ocrInitialized) {
         // Use Vision OCR (local, fast)
-        setAnalysisProgress({ progress: 20, stage: 'Vision OCR - Analisi locale...' });
+        setAnalysisProgress({ progress: 20, stage: t('scanner.localAnalysis') });
 
         Animated.timing(progressAnimation, {
           toValue: 60,
@@ -337,13 +343,13 @@ export function GenericLiveOCRScreen() {
       let smartAnalysis: SmartAnalysisResult | null = null;
 
       // Se abbiamo OCR analysis, usa quello per smart analysis
-      if (ocrAnalysis && ocrAnalysis.text) {
+      if (!onlineAnalysis && ocrAnalysis && ocrAnalysis.text) {
         console.log('🧠 Performing smart analysis on OCR text...');
         setIsUploading(true);
 
         smartAnalysis = await smartReceiptAnalyzer.analyzeReceiptText(
           ocrAnalysis.text,
-          ocrAnalysis.confidence
+          ocrAnalysis.confidence ?? 0
         );
 
         if (smartAnalysis) {
@@ -390,9 +396,8 @@ export function GenericLiveOCRScreen() {
 
     if (onlineAnalysis) {
       verificationData = mergeReceiptAnalysis(verificationData, onlineAnalysis.fields);
-      if (onlineAnalysis.fields.merchantAddress) {
-        setOcrSilentFields(current => ({ ...current, merchantAddress: onlineAnalysis.fields.merchantAddress }));
-      }
+      setOcrSilentFields({ merchantAddress: onlineAnalysis.fields.merchantAddress,
+        merchantVat: onlineAnalysis.fields.merchantVat });
     }
 
     try {
@@ -447,8 +452,8 @@ export function GenericLiveOCRScreen() {
       // Prepara i dati estratti per il salvataggio
       const extractedDataForSaving = {
         originalText: ocrAnalysis?.text || '',
-        overallAccuracy: ocrAnalysis?.accuracy || 0,
-        provider: onlineAnalysis ? 'azure' : 'local',
+        overallAccuracy: ocrAnalysis?.accuracy ?? null,
+        provider: onlineAnalysis ? 'qwen' : 'local',
         merchantLocation: confirmedData.merchantLocation,
         merchantLocationSource: confirmedData.merchantLocationSource,
         // Includi altri dati dall'analisi smart se disponibili
@@ -674,22 +679,27 @@ export function GenericLiveOCRScreen() {
         {/* Analysis Results */}
         {ocrAnalysis && analysisProgress.progress === 100 && (
           <View style={[styles.resultsContainer, { paddingBottom: Math.max(insets.bottom, 16) + 20 }]}>
-            <View style={styles.accuracyIndicator}>
+            {onlineAnalysis ? (
+              <View style={styles.accuracyIndicator}>
+                <MaterialIcons name="cloud-done" size={36} color="#007AFF" />
+                <Text style={styles.accuracyLabel}>{t('scanner.onlineAnalysisComplete')}</Text>
+              </View>
+            ) : <View style={styles.accuracyIndicator}>
               <View style={[
                 styles.accuracyCircle,
-                { backgroundColor: ocrAnalysis.accuracy >= ACCURACY_THRESHOLD ? '#4CAF50' : '#FF9800' }
+                { backgroundColor: (ocrAnalysis.accuracy ?? 0) >= ACCURACY_THRESHOLD ? '#4CAF50' : '#FF9800' }
               ]}>
                 <Text style={styles.accuracyText}>
-                  {Math.round(ocrAnalysis.accuracy)}%
+                  {Math.round(ocrAnalysis.accuracy ?? 0)}%
                 </Text>
               </View>
               <Text style={[
                 styles.accuracyLabel,
-                { color: ocrAnalysis.accuracy >= ACCURACY_THRESHOLD ? '#4CAF50' : '#FF9800' }
+                { color: (ocrAnalysis.accuracy ?? 0) >= ACCURACY_THRESHOLD ? '#4CAF50' : '#FF9800' }
               ]}>
-                {ocrAnalysis.accuracy >= ACCURACY_THRESHOLD ? t('scanner.excellentQuality') : t('scanner.lowQuality')}
+                {(ocrAnalysis.accuracy ?? 0) >= ACCURACY_THRESHOLD ? t('scanner.excellentQuality') : t('scanner.lowQuality')}
               </Text>
-            </View>
+            </View>}
 
             <View style={styles.actionButtons}>
               <TouchableOpacity

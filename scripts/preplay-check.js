@@ -85,6 +85,19 @@ check('Searchable currency picker is shared by create and edit flows', () => {
   requireText(picker, 'insets.bottom', 'Currency picker must respect Android navigation insets.');
 });
 
+check('Qwen is optional, account-scoped, and never shown with invented confidence', () => {
+  const profile = read('screens/main/ProfileScreen.tsx');
+  const scanner = read('screens/main/GenericLiveOCRScreen.tsx');
+  const online = read('services/onlineReceiptAnalysis.ts');
+  requireText(profile, 'setQwenEnabled(userId, enabled)', 'Account must persist the current user choice.');
+  requireText(profile, '<Switch', 'Account must expose the OCR switch.');
+  requireText(online, 'getQwenEnabled(userId)', 'Cloud upload must check opt-in.');
+  requireText(online, "form.append('provider', 'qwen')", 'Cloud upload must explicitly select Qwen.');
+  requireText(scanner, 'visionOCRService.extractTextFromImage', 'Local OCR fallback must remain available.');
+  assert(!scanner.includes('online.confidence'), 'Qwen must not display an invented confidence percentage.');
+  assert(!online.includes("provider === 'azure'"), 'The new app must not accept Azure responses.');
+});
+
 check('Play build script requires preflight before EAS', () => {
   const pkg = readJson('package.json');
   const script = pkg.scripts && pkg.scripts['build:android:play'];
@@ -157,6 +170,8 @@ check('Targeted lint passes for release-critical files', () => {
     'utils/currencies.ts',
     'utils/mergeReceiptAnalysis.ts',
     'services/onlineReceiptAnalysis.ts',
+    'services/ocrPreferences.ts',
+    'screens/main/ProfileScreen.tsx',
     'utils/reportSelection.ts',
     'screens/main/ExpenseReportsScreen.tsx',
     'screens/main/GenericScanScreen.tsx',

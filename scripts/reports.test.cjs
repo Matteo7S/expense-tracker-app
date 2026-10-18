@@ -5,28 +5,40 @@ const fs = require('node:fs');
 const path = require('node:path');
 const ts = require('typescript');
 
-test('online receipt analysis skips network when offline or cancelled', async () => {
+test('online receipt analysis skips network when offline, cancelled, or not opted in', async () => {
   let calls = 0;
+  let online = false;
+  let enabled = true;
   const { analyzeReceiptOnline } = load('services/onlineReceiptAnalysis.ts', {
     './api': { apiClient: { uploadFile: async () => { calls++; } } },
-    './networkManager': { networkManager: { isOnline: () => false } },
+    './networkManager': { networkManager: { isOnline: () => online } },
+    './ocrPreferences': { getQwenEnabled: async userId => Boolean(userId) && enabled },
   });
-  assert.equal(await analyzeReceiptOnline('receipt.jpg', new AbortController().signal), null);
+  const controller = new AbortController();
+  assert.equal(await analyzeReceiptOnline('receipt.jpg', controller.signal, 'user'), null);
+  online = true;
+  assert.equal(await analyzeReceiptOnline('receipt.jpg', controller.signal), null);
+  enabled = false;
+  assert.equal(await analyzeReceiptOnline('receipt.jpg', controller.signal, 'user'), null);
+  enabled = true; controller.abort();
+  assert.equal(await analyzeReceiptOnline('receipt.jpg', controller.signal, 'user'), null);
   assert.equal(calls, 0);
 });
 
 test('online receipt analysis uses authenticated upload, a timeout and cancellation; failures fall back', async () => {
-  let response = { success: true, data: { provider: 'azure', fields: { amount: 12, currency: 'GBP' }, confidence: 0.9 } };
+  let response = { success: true, data: { provider: 'qwen', text: '', fields: { amount: 12, currency: 'GBP' } } };
   let fail = false;
   let lastOptions;
   const { analyzeReceiptOnline } = load('services/onlineReceiptAnalysis.ts', {
-    './api': { apiClient: { uploadFile: async (url, _form, _headers, options) => {
+    './api': { apiClient: { uploadFile: async (url, form, _headers, options) => {
       assert.equal(url, '/expenses/analyze-receipt');
+      assert.equal(form.get('provider'), 'qwen');
       lastOptions = options;
       if (fail) throw new Error('unavailable');
       return response;
     } } },
     './networkManager': { networkManager: { isOnline: () => true } },
+    './ocrPreferences': { getQwenEnabled: async () => true },
   });
   const controller = new AbortController();
   assert.equal((await analyzeReceiptOnline('receipt.jpg', controller.signal)).fields.currency, 'GBP');
@@ -34,13 +46,81 @@ test('online receipt analysis uses authenticated upload, a timeout and cancellat
   assert.equal(lastOptions.signal, controller.signal);
   fail = true;
   assert.equal(await analyzeReceiptOnline('receipt.jpg', controller.signal), null);
-  fail = false; response = { success: false };
+  fail = false; response = { success: true, data: { provider: 'azure', fields: { amount: 12 } } };
+  assert.equal(await analyzeReceiptOnline('receipt.jpg', controller.signal), null);
+  response = { success: true, data: { provider: 'qwen', fields: {} } };
+  assert.equal(await analyzeReceiptOnline('receipt.jpg', controller.signal), null);
+  response = { success: false };
   assert.equal(await analyzeReceiptOnline('receipt.jpg', controller.signal), null);
   controller.abort();
   assert.equal(await analyzeReceiptOnline('receipt.jpg', controller.signal), null);
 });
 
-test('Azure fields override heuristics, preserve zero and leave location and missing fields alone', () => {
+test('preferences persist per account, default off and fail closed on storage errors', async () => {
+  const store = new Map();
+  const storage = { getItem: async key => store.get(key) ?? null,
+    setItem: async (key, value) => { store.set(key, value); } };
+  const prefs = () => load('services/ocrPreferences.ts', {
+    '@react-native-async-storage/async-storage': storage,
+  });
+  assert.equal(await prefs().getQwenEnabled(), false);
+  assert.equal(await prefs().getQwenEnabled('a'), false);
+  await prefs().setQwenEnabled('a', true);
+  assert.equal(await prefs().getQwenEnabled('a'), true);
+  assert.equal(await prefs().getQwenEnabled('b'), false);
+  await prefs().setQwenEnabled('a', false);
+  assert.equal(await prefs().getQwenEnabled('a'), false);
+  storage.getItem = async () => { throw new Error('storage unavailable'); };
+  assert.equal(await prefs().getQwenEnabled('a'), false);
+  storage.setItem = async () => { throw new Error('storage unavailable'); };
+  await assert.rejects(prefs().setQwenEnabled('a', true));
+});
+
+test('OCR settings and progress messages are translated in all supported languages', () => {
+  const { translations, supportedLanguages } = load('i18n/translations.ts', {});
+  for (const language of supportedLanguages) {
+    const t = translations[language];
+    for (const key of ['qwenTitle', 'qwenDescription', 'qwenSaveError']) assert(t.profile[key]?.length > 0);
+    for (const key of ['localAnalysis', 'onlineAnalysis', 'onlineAnalysisComplete']) {
+      assert(t.scanner[key]?.length > 0);
+      assert(!t.scanner[key].includes('Azure'));
+    }
+    assert(t.verification.review?.length > 0);
+  }
+});
+
+test('preference loading rechecks cancellation and connection before upload', async () => {
+  for (const reason of ['cancel', 'offline']) {
+    const controller = new AbortController();
+    let online = true;
+    const { analyzeReceiptOnline } = load('services/onlineReceiptAnalysis.ts', {
+      './api': { apiClient: { uploadFile: async () => assert.fail('No image should be uploaded') } },
+      './networkManager': { networkManager: { isOnline: () => online } },
+      './ocrPreferences': { getQwenEnabled: async () => {
+        if (reason === 'cancel') controller.abort(); else online = false;
+        return true;
+      } },
+    });
+    assert.equal(await analyzeReceiptOnline('receipt.jpg', controller.signal, 'a'), null);
+  }
+});
+
+test('late cloud results after cancellation are discarded and never shown', async () => {
+  const controller = new AbortController();
+  let startCalls = 0;
+  const { analyzeReceiptOnline } = load('services/onlineReceiptAnalysis.ts', {
+    './api': { apiClient: { uploadFile: async () => {
+      controller.abort();
+      return { success: true, data: { provider: 'qwen', fields: { amount: 12 } } };
+    } } },
+    './networkManager': { networkManager: { isOnline: () => true } },
+    './ocrPreferences': { getQwenEnabled: async () => true },
+  });
+  assert.equal(await analyzeReceiptOnline('receipt.jpg', controller.signal, 'a', () => startCalls++), null);
+  assert.equal(startCalls, 1);
+});
+
+test('online fields override heuristics, preserve zero and leave location and missing fields alone', () => {
   const { mergeReceiptAnalysis } = load('utils/mergeReceiptAnalysis.ts', {});
   const local = { amount: 100, currency: 'EUR', merchantName: 'Local', date: '2026-04-22', merchantLocation: 'Mantova', confidence: { amount: 0.9, merchant: 0.5 } };
   const merged = mergeReceiptAnalysis(local, { amount: 0, currency: 'GBP', merchantName: '', confidence: { amount: 0.7 } });
@@ -53,6 +133,12 @@ test('Azure fields override heuristics, preserve zero and leave location and mis
   assert.equal(local.amount, 100);
   assert.equal(local.confidence.amount, 0.9);
   assert.equal(mergeReceiptAnalysis(local, { amount: 25 }).confidence.amount, undefined);
+  const qwen = mergeReceiptAnalysis(local, { analysisProvider: 'qwen', amount: 61, category: 'fuel', fuelLiters: 31.3 });
+  assert.equal(qwen.category, 'fuel');
+  assert.equal(qwen.fuelLiters, 31.3);
+  assert.equal(qwen.merchantLocation, 'Mantova');
+  assert.equal(qwen.confidence.merchant, undefined);
+  assert.equal(qwen.analysisProvider, 'qwen');
 });
 
 test('destination search sorts by recency, ignores accents and keeps the input unchanged', () => {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   SafeAreaView,
   Alert,
   ActivityIndicator,
+  ScrollView,
+  Switch,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
@@ -16,6 +18,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useSyncStats, syncManager } from '../../services/syncManager';
 import { MainStackParamList, TabParamList } from '../../navigation/MainNavigator';
 import { useI18n } from '../../i18n';
+import { getQwenEnabled, setQwenEnabled } from '../../services/ocrPreferences';
 
 type ProfileScreenNavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Profile'>,
@@ -27,6 +30,33 @@ export function ProfileScreen() {
   const { user, logout } = useAuth();
   const syncStats = useSyncStats();
   const { language, languageLabel, supportedLanguages, setLanguage, t } = useI18n();
+  const [ocrSetting, setOcrSetting] = useState({ userId: '', enabled: false, ready: false });
+  const [savingOcr, setSavingOcr] = useState(false);
+  const savingOcrRef = useRef(false);
+  const userId = user?.id;
+
+  useEffect(() => {
+    let active = true;
+    void getQwenEnabled(userId).then(enabled => {
+      if (active) setOcrSetting({ userId: userId || '', enabled, ready: true });
+    });
+    return () => { active = false; };
+  }, [userId]);
+
+  const handleQwenChange = async (enabled: boolean) => {
+    if (!userId || savingOcrRef.current) return;
+    savingOcrRef.current = true;
+    setSavingOcr(true);
+    try {
+      await setQwenEnabled(userId, enabled);
+      setOcrSetting(current => current.userId === userId ? { ...current, enabled } : current);
+    } catch {
+      Alert.alert(t('common.error'), t('profile.qwenSaveError'));
+    } finally {
+      savingOcrRef.current = false;
+      setSavingOcr(false);
+    }
+  };
 
   const handleLogout = () => {
     Alert.alert(
@@ -143,7 +173,7 @@ export function ProfileScreen() {
         <Text style={styles.title}>{t('profile.title')}</Text>
       </View>
 
-      <View style={styles.content}>
+      <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.userInfo}>
           <View style={styles.avatar}>
             <MaterialIcons name="person" size={48} color="#007AFF" />
@@ -191,6 +221,21 @@ export function ProfileScreen() {
             <MaterialIcons name="chevron-right" size={24} color="#ccc" />
           </TouchableOpacity>
 
+          <View style={styles.option}>
+            <MaterialIcons name="cloud-upload" size={24} color="#007AFF" />
+            <View style={styles.ocrDescription}>
+              <Text style={styles.ocrTitle}>{t('profile.qwenTitle')}</Text>
+              <Text style={styles.ocrHelp}>{t('profile.qwenDescription')}</Text>
+            </View>
+            <Switch
+              accessibilityLabel={t('profile.qwenTitle')}
+              accessibilityHint={t('profile.qwenDescription')}
+              value={ocrSetting.userId === userId && ocrSetting.enabled}
+              disabled={!userId || !ocrSetting.ready || ocrSetting.userId !== userId || savingOcr}
+              onValueChange={handleQwenChange}
+            />
+          </View>
+
           <TouchableOpacity
             style={[styles.option, styles.logoutOption]}
             onPress={handleLogout}
@@ -200,7 +245,7 @@ export function ProfileScreen() {
             <MaterialIcons name="chevron-right" size={24} color="#ccc" />
           </TouchableOpacity>
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -222,8 +267,8 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   content: {
-    flex: 1,
     padding: 20,
+    paddingBottom: 32,
   },
   userInfo: {
     alignItems: 'center',
@@ -284,6 +329,9 @@ const styles = StyleSheet.create({
     color: '#333',
     marginLeft: 12,
   },
+  ocrDescription: { flex: 1, marginHorizontal: 12 },
+  ocrTitle: { fontSize: 16, color: '#333' },
+  ocrHelp: { fontSize: 13, color: '#666', marginTop: 6, lineHeight: 19 },
   optionValue: {
     fontSize: 14,
     color: '#666',

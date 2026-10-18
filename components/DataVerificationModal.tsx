@@ -23,6 +23,7 @@ import { useI18n } from '../i18n';
 import { CurrencyPicker } from './CurrencyPicker';
 
 export interface ExtractedData {
+  analysisProvider?: 'qwen';
   amount?: number;
   currency?: string;
   date?: string; // ISO format
@@ -191,6 +192,7 @@ export const DataVerificationModal: React.FC<DataVerificationModalProps> = ({
   };
 
   const getConfidenceText = (confidence?: number) => {
+    if (confidence === undefined && extractedData.analysisProvider === 'qwen') return t('verification.review');
     if (!confidence) return t('verification.manual');
     if (confidence >= 0.8) return t('verification.high');
     if (confidence >= 0.6) return t('verification.medium');

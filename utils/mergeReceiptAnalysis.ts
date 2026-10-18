@@ -2,8 +2,12 @@ import type { ExtractedData } from '../components/DataVerificationModal';
 
 export function mergeReceiptAnalysis(local: ExtractedData, online: ExtractedData): ExtractedData {
   const result = { ...local, confidence: { ...local.confidence } };
+  if (online.analysisProvider === 'qwen') {
+    result.analysisProvider = 'qwen';
+    result.confidence = {};
+  }
   // Only explicit receipt fields override local extraction. Never infer merchant location.
-  for (const key of ['amount', 'currency', 'date', 'time', 'merchantName'] as const) {
+  for (const key of ['amount', 'currency', 'date', 'time', 'merchantName', 'category', 'fuelLiters', 'fuelType', 'kilometers'] as const) {
     const value = online[key];
     if (value !== undefined && value !== null && value !== '') {
       Object.assign(result, { [key]: value });
